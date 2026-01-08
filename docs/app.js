@@ -543,14 +543,16 @@ async function syncFromSheets() {
   setStatusMessage(sheetStatusEl, "Sincronizando con Google Sheets...", "loading");
   try {
     const data = await apiRequest("bootstrap");
+    const resolveCollection = (incoming, fallback) =>
+      Array.isArray(incoming) && incoming.length ? incoming : fallback;
     state = {
       ...state,
-      users: data.users?.length ? data.users : state.users,
-      clients: data.clients ?? state.clients,
-      projects: data.projects ?? state.projects,
-      expenses: data.expenses ?? state.expenses,
-      concepts: data.concepts?.length ? data.concepts : state.concepts,
-      supports: data.supports?.length ? data.supports : state.supports,
+      users: resolveCollection(data.users, state.users),
+      clients: resolveCollection(data.clients, state.clients),
+      projects: resolveCollection(data.projects, state.projects),
+      expenses: resolveCollection(data.expenses, state.expenses),
+      concepts: resolveCollection(data.concepts, state.concepts),
+      supports: resolveCollection(data.supports, state.supports),
     };
     persistState();
     setStatusMessage(sheetStatusEl, "Datos actualizados desde Google Sheets.", "success");
