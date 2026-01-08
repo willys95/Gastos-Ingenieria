@@ -47,6 +47,7 @@ const fabButton = document.getElementById("fab-button");
 const appTitle = document.getElementById("app-title");
 const menuToggle = document.getElementById("menu-toggle");
 const drawer = document.getElementById("drawer");
+const drawerClose = document.getElementById("drawer-close");
 const drawerOverlay = document.getElementById("drawer-overlay");
 const bottomNav = document.getElementById("bottom-nav");
 const bottomNavItems = document.querySelectorAll(".bottom-nav__item");
@@ -198,6 +199,7 @@ function updateView() {
   bottomNav.classList.toggle("hidden", !isLoggedIn);
 
   if (!isLoggedIn) {
+    toggleDrawer(false);
     return;
   }
 
@@ -352,6 +354,10 @@ function toggleDrawer(forceOpen) {
   drawer.classList.toggle("is-visible", shouldOpen);
   drawerOverlay.classList.toggle("is-visible", shouldOpen);
   drawer.setAttribute("aria-hidden", (!shouldOpen).toString());
+  drawerOverlay.setAttribute("aria-hidden", (!shouldOpen).toString());
+  menuToggle.classList.toggle("is-active", shouldOpen);
+  menuToggle.setAttribute("aria-expanded", shouldOpen.toString());
+  document.body.classList.toggle("is-locked", shouldOpen);
 }
 
 loginForm.addEventListener("submit", async (event) => {
@@ -397,6 +403,10 @@ drawerNavItems.forEach((button) => {
 
 menuToggle.addEventListener("click", () => {
   toggleDrawer();
+});
+
+drawerClose.addEventListener("click", () => {
+  toggleDrawer(false);
 });
 
 drawerOverlay.addEventListener("click", () => {
