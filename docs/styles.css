@@ -365,6 +365,26 @@ textarea {
   font-size: 12px;
 }
 
+.form__helper.is-error,
+.status-message.is-error {
+  color: #b91c1c;
+}
+
+.form__helper.is-success,
+.status-message.is-success {
+  color: #15803d;
+}
+
+.form__helper.is-loading,
+.status-message.is-loading {
+  color: #2563eb;
+}
+
+.status-message {
+  margin: 0;
+  font-size: 12px;
+}
+
 .sheet {
   display: none;
   background: #ffffff;
