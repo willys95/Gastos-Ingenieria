@@ -1,12 +1,13 @@
 const CONFIG = {
   sheetId: "1tLdiGfhlSR0jsXT89jk-dDGfhci-Y3IAiECoR2g5RCo",
   driveFolderId: "1Q7mcMtEQoccD5gfux4TXNi9zY9qnIiXf",
-  appsScriptUrl: "https://script.google.com/macros/s/AKfycbyLadJHX4HcnS6uDYP27btoPgFjqih8qLXgcV8okoaW_g7dtuL9rsRoSP3jsrT_UI_5SA/exec",
-  appsScriptToken: "Fondo-2026!X9k2$",
+  appsScriptUrl: "",
+  appsScriptToken: "",
 };
 
 // ✅ Correos administradores (tendrán acceso a la vista "Usuarios")
 const ADMIN_EMAILS = ["rodriguezwilly4@gmail.com"];
+const LEADER_EMAILS = [];
 
 
 const STORAGE_KEY = "gastos-ingenieria-state";
@@ -17,6 +18,7 @@ const defaultState = {
     {
       id: "u_admin",
       name: "Administrador",
+      email: "",
       username: "admin",
       password: "Sami123+",
       role: "admin",
@@ -25,8 +27,20 @@ const defaultState = {
   clients: [],
   projects: [],
   expenses: [],
-  concepts: ["Transporte", "Alimentación", "Materiales", "Servicios"],
-  supports: ["Factura", "Recibo", "Comprobante", "Otro"],
+  concepts: [
+    "Seguridad Social",
+    "Transporte",
+    "Alimentación",
+    "Hospedaje",
+    "Compra de materiales",
+    "Pago a terceros",
+    "Impuestos",
+    "Servicios",
+    "Viáticos",
+    "Prestamos",
+    "Nomina",
+  ],
+  supports: ["Factura Electrónica", "Cuenta de cobro", "Tiquete", "Otro Documentos"],
   currentView: "dashboard",
 };
 
@@ -43,6 +57,8 @@ const resetPasswordButton = document.getElementById("reset-password");
 const logoutButton = document.getElementById("logout-button");
 const userSummary = document.getElementById("user-summary");
 const navButtons = document.querySelectorAll(".nav__item");
+const clientsNav = document.getElementById("clients-nav");
+const projectsNav = document.getElementById("projects-nav");
 const views = document.querySelectorAll(".view");
 const usersNav = document.getElementById("users-nav");
 const viewTitle = document.getElementById("view-title");
@@ -52,6 +68,7 @@ const syncButton = document.getElementById("sync-button");
 const exportButton = document.getElementById("export-button");
 const menuToggle = document.getElementById("menu-toggle");
 const pageEl = document.querySelector(".page");
+const sidebar = document.getElementById("sidebar");
 
 
 const statClients = document.getElementById("stat-clients");
@@ -69,6 +86,8 @@ const clientList = document.getElementById("client-list");
 const projectForm = document.getElementById("project-form");
 const projectMessage = document.getElementById("project-message");
 const projectClient = document.getElementById("project-client");
+const projectResponsible = document.getElementById("project-responsible");
+const projectNotes = document.getElementById("project-notes");
 const projectList = document.getElementById("project-list");
 
 const expenseForm = document.getElementById("expense-form");
@@ -83,6 +102,12 @@ const expenseMessage = document.getElementById("expense-message");
 const expenseTable = document.getElementById("expense-table");
 const receiptInput = document.getElementById("expense-receipt");
 const receiptPreview = document.getElementById("receipt-preview");
+const expenseNotes = document.getElementById("expense-notes");
+
+const conceptCard = document.getElementById("concept-card");
+const conceptForm = document.getElementById("concept-form");
+const conceptMessage = document.getElementById("concept-message");
+const conceptNameInput = document.getElementById("concept-name");
 
 const userForm = document.getElementById("user-form");
 const userMessage = document.getElementById("user-message");
@@ -195,27 +220,7 @@ function setActiveView(viewName) {
   views.forEach((view) => {
     view.classList.toggle("is-active", view.dataset.view === viewName);
   });
-  function closeMenu() {
-  sidebar.classList.remove("is-open");
-  pageEl?.classList.remove("is-menu-open");
-}
-
-menuToggle?.addEventListener("click", () => {
-  sidebar.classList.toggle("is-open");
-  pageEl?.classList.toggle("is-menu-open");
-});
-
-pageEl?.addEventListener("click", (e) => {
-  if (pageEl.classList.contains("is-menu-open")) {
-    const isClickInsideSidebar = sidebar.contains(e.target);
-    const isClickOnToggle = menuToggle && menuToggle.contains(e.target);
-    if (!isClickInsideSidebar && !isClickOnToggle) {
-      closeMenu();
-    }
-  }
-});
-
-navButtons.forEach((button) => {
+  navButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === viewName);
   });
   updateHeader(viewName);
@@ -230,6 +235,69 @@ function calculateProjectBalance(projectId) {
     .filter((expense) => expense.projectId === projectId)
     .reduce((total, expense) => total + expense.amount, 0);
   return project.baseAmount - spent;
+}
+
+function getCurrentRole() {
+  return state.currentUser?.role || "empleado";
+}
+
+function isAdmin() {
+  return getCurrentRole() === "admin";
+}
+
+function isLeader() {
+  return getCurrentRole() === "lider";
+}
+
+function canManageProjects() {
+  return isAdmin() || isLeader();
+}
+
+function canManageUsers() {
+  return isAdmin();
+}
+
+function canExport() {
+  return isAdmin();
+}
+
+function getUserMatch(email, username) {
+  const safeEmail = email?.toLowerCase();
+  const safeUsername = username?.toLowerCase();
+  return state.users.find((user) => {
+    const emailMatch = user.email && safeEmail && user.email.toLowerCase() === safeEmail;
+    const usernameMatch = safeUsername && user.username?.toLowerCase() === safeUsername;
+    return emailMatch || usernameMatch;
+  });
+}
+
+function isProjectVisibleToUser(project) {
+  if (!project) {
+    return false;
+  }
+  if (isAdmin() || isLeader()) {
+    return true;
+  }
+  const username = state.currentUser?.username?.toLowerCase();
+  const email = state.currentUser?.email?.toLowerCase();
+  return (
+    (username && project.responsibleUsername?.toLowerCase() === username) ||
+    (email && project.responsibleEmail?.toLowerCase() === email) ||
+    (username && project.responsibleName?.toLowerCase() === username)
+  );
+}
+
+function getVisibleProjects() {
+  return state.projects.filter((project) => isProjectVisibleToUser(project));
+}
+
+function getVisibleProjectIds() {
+  return new Set(getVisibleProjects().map((project) => project.id));
+}
+
+function updateDeviceClass() {
+  const isMobile = window.matchMedia("(max-width: 900px)").matches;
+  document.body.classList.toggle("is-mobile", isMobile);
 }
 
 function renderSelect(selectEl, items, placeholder, getLabel, selectedId) {
@@ -283,6 +351,9 @@ function renderProjects() {
   }
   state.projects.forEach((project) => {
     const remaining = calculateProjectBalance(project.id);
+    const statusValue = project.status || "activo";
+    const isInactive = remaining <= 0 || statusValue === "inactivo";
+    const statusLabel = isInactive ? "Inactivo" : "Activo";
     const item = document.createElement("div");
     item.className = "list-item";
     item.innerHTML = `
@@ -291,7 +362,20 @@ function renderProjects() {
         <span>$${remaining.toLocaleString()}</span>
       </div>
       <div class="list-item__meta">${project.clientName} · ${project.city}</div>
+      <div class="list-item__meta">Responsable: ${project.responsibleName || "Sin asignar"}</div>
       <div class="list-item__meta">Base inicial: $${project.baseAmount.toLocaleString()}</div>
+      <div class="list-item__meta">
+        Estado:
+        ${
+          canManageProjects()
+            ? `<select class="status-select" data-project="${project.id}">
+                <option value="activo" ${statusValue === "activo" ? "selected" : ""}>Activo</option>
+                <option value="inactivo" ${statusValue === "inactivo" ? "selected" : ""}>Inactivo</option>
+              </select>`
+            : `<span class="status-pill ${isInactive ? "is-inactive" : ""}">${statusLabel}</span>`
+        }
+      </div>
+      ${project.notes ? `<div class="list-item__meta">Observaciones: ${project.notes}</div>` : ""}
     `;
     projectList.append(item);
   });
@@ -299,19 +383,22 @@ function renderProjects() {
 
 function renderBalances() {
   balancesEl.innerHTML = "";
-  if (!state.projects.length) {
+  const visibleProjects = getVisibleProjects();
+  if (!visibleProjects.length) {
     balancesEl.innerHTML = '<p class="form__helper">Aún no hay cajas creadas.</p>';
     return;
   }
-  state.projects.forEach((project) => {
+  visibleProjects.forEach((project) => {
     const remaining = calculateProjectBalance(project.id);
-    const status = remaining > 0 ? "Activa" : "Cerrada";
+    const statusValue = project.status || "activo";
+    const isInactive = remaining <= 0 || statusValue === "inactivo";
+    const status = isInactive ? "Inactivo" : "Activo";
     const item = document.createElement("div");
     item.className = "list-item";
     item.innerHTML = `
       <div class="list-item__header">
         <span>${project.clientName}</span>
-        <span>${status}</span>
+        <span class="status-pill ${isInactive ? "is-inactive" : ""}">${status}</span>
       </div>
       <div class="list-item__meta">Proyecto ${project.code} · ${project.name}</div>
       <div class="list-item__meta">${project.city} · Saldo $${remaining.toLocaleString()}</div>
@@ -322,11 +409,15 @@ function renderBalances() {
 
 function renderExpenses() {
   expenseTable.innerHTML = "";
-  if (!state.expenses.length) {
+  const visibleProjectIds = getVisibleProjectIds();
+  const visibleExpenses = isAdmin() || isLeader()
+    ? state.expenses
+    : state.expenses.filter((expense) => visibleProjectIds.has(expense.projectId));
+  if (!visibleExpenses.length) {
     expenseTable.innerHTML = '<p class="form__helper">No hay egresos registrados.</p>';
     return;
   }
-  const rows = [...state.expenses]
+  const rows = [...visibleExpenses]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map((expense) => {
       return `
@@ -336,7 +427,9 @@ function renderExpenses() {
             <span>$${expense.amount.toLocaleString()}</span>
           </div>
           <div class="list-item__meta">${expense.date} · ${expense.projectName}</div>
-          <div class="list-item__meta">${expense.clientName} · ${expense.description}</div>
+          <div class="list-item__meta">${expense.clientName} · ${expense.city}</div>
+          <div class="list-item__meta">${expense.description}</div>
+          ${expense.notes ? `<div class="list-item__meta">Observaciones: ${expense.notes}</div>` : ""}
           <div class="list-item__meta">Soporte: ${expense.supportType || "Sin definir"}</div>
           <div class="list-item__meta">
             Comprobante: ${
@@ -354,11 +447,15 @@ function renderExpenses() {
 
 function renderRecentExpenses() {
   recentExpensesEl.innerHTML = "";
-  if (!state.expenses.length) {
+  const visibleProjectIds = getVisibleProjectIds();
+  const visibleExpenses = isAdmin() || isLeader()
+    ? state.expenses
+    : state.expenses.filter((expense) => visibleProjectIds.has(expense.projectId));
+  if (!visibleExpenses.length) {
     recentExpensesEl.innerHTML = '<p class="form__helper">No hay egresos registrados.</p>';
     return;
   }
-  const rows = [...state.expenses]
+  const rows = [...visibleExpenses]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 4)
     .map((expense) => {
@@ -392,6 +489,7 @@ function renderUsers() {
         <span>${user.role}</span>
       </div>
       <div class="list-item__meta">Usuario: ${user.username}</div>
+      ${user.email ? `<div class="list-item__meta">Correo: ${user.email}</div>` : ""}
     `;
     userList.append(item);
   });
@@ -399,30 +497,38 @@ function renderUsers() {
 
 function updateExpenseAvailability() {
   const projectId = expenseProject.value;
+  const project = state.projects.find((item) => item.id === projectId);
   const remaining = projectId ? calculateProjectBalance(projectId) : null;
+  const statusValue = project?.status || "activo";
+  const isInactive = project ? statusValue === "inactivo" || remaining <= 0 : false;
   if (remaining !== null) {
     expenseRemaining.value = `$${remaining.toLocaleString()}`;
   } else {
     expenseRemaining.value = "";
   }
 
-  if (remaining !== null && remaining <= 0) {
-    expenseWarning.textContent = "La caja está en $0. No es posible registrar más egresos.";
+  if (remaining !== null && isInactive) {
+    expenseWarning.textContent =
+      remaining <= 0
+        ? "La caja está en $0. No es posible registrar más egresos."
+        : "El proyecto está inactivo. No es posible registrar egresos.";
     expenseWarning.classList.add("is-visible");
   } else {
     expenseWarning.textContent = "";
     expenseWarning.classList.remove("is-visible");
   }
 
-  const isBlocked = remaining !== null && remaining <= 0;
+  const isBlocked = remaining !== null && isInactive;
   expenseForm.querySelector("button").disabled = isBlocked;
 }
 
 function renderStats() {
-  statClients.textContent = state.clients.length;
-  statProjects.textContent = state.projects.length;
-  const totalBase = state.projects.reduce((sum, project) => sum + project.baseAmount, 0);
-  const totalRemaining = state.projects.reduce(
+  const visibleProjects = getVisibleProjects();
+  const visibleClientIds = new Set(visibleProjects.map((project) => project.clientId));
+  statClients.textContent = isAdmin() || isLeader() ? state.clients.length : visibleClientIds.size;
+  statProjects.textContent = visibleProjects.length;
+  const totalBase = visibleProjects.reduce((sum, project) => sum + project.baseAmount, 0);
+  const totalRemaining = visibleProjects.reduce(
     (sum, project) => sum + calculateProjectBalance(project.id),
     0,
   );
@@ -432,24 +538,51 @@ function renderStats() {
 
 function renderOptions() {
   renderSelect(projectClient, state.clients, "Seleccione un cliente", null, projectClient.value);
-  renderSelect(expenseClient, state.clients, "Seleccione un cliente", null, expenseClient.value);
+
+  const visibleProjects = state.projects.filter((project) => isProjectVisibleToUser(project));
+  const visibleClientIds = new Set(visibleProjects.map((project) => project.clientId));
+  const filteredClients = isAdmin() || isLeader()
+    ? state.clients
+    : state.clients.filter((client) => visibleClientIds.has(client.id));
+
+  renderSelect(expenseClient, filteredClients, "Seleccione un cliente", null, expenseClient.value);
 
   const selectedClientId = expenseClient.value;
-  const projects = state.projects.filter((project) => project.clientId === selectedClientId);
+  const projects = visibleProjects.filter((project) => project.clientId === selectedClientId);
   renderSelect(
     expenseProject,
     projects,
     "Seleccione un proyecto",
-    (item) => `${item.code} · ${item.name}`,
+    (item) => `${item.code} · ${item.responsibleName || "Sin responsable"}`,
     expenseProject.value,
   );
 
   const selectedProject = state.projects.find((project) => project.id === expenseProject.value);
-  expenseCity.value = selectedProject?.city || "";
+  const cityOptions = Array.from(
+    new Set(state.clients.map((client) => client.city).filter(Boolean)),
+  );
+  renderSimpleSelect(expenseCity, cityOptions, "Seleccione una ciudad");
+  if (selectedProject?.city) {
+    expenseCity.value = selectedProject.city;
+  } else {
+    const selectedClient = state.clients.find((client) => client.id === selectedClientId);
+    expenseCity.value = selectedClient?.city || expenseCity.value;
+  }
+
   updateExpenseAvailability();
 
-  renderSimpleSelect(expenseCategory, state.concepts, "Seleccione una categoría");
+  renderSimpleSelect(expenseCategory, state.concepts, "Seleccione un concepto");
   renderSimpleSelect(expenseSupport, state.supports, "Seleccione el soporte");
+
+  const availableUsers = state.users.filter((user) => user.role === "empleado");
+  renderSelect(
+    projectResponsible,
+    availableUsers,
+    "Seleccione un responsable",
+    (item) => item.name,
+    projectResponsible?.value,
+  );
+
   updateProjectCodeSuggestion();
 }
 
@@ -464,10 +597,19 @@ function updateView() {
   }
 
   userSummary.textContent = `${state.currentUser.name} · ${state.currentUser.role}`;
-  const isAdmin = state.currentUser.role === "admin";
-  usersNav.classList.toggle("hidden", !isAdmin);
-  adminSection.classList.toggle("hidden", !isAdmin);
-  if (!isAdmin && state.currentView === "users") {
+  usersNav.classList.toggle("hidden", !canManageUsers());
+  adminSection.classList.toggle("hidden", !canManageUsers());
+  clientsNav.classList.toggle("hidden", !canManageProjects());
+  projectsNav.classList.toggle("hidden", !canManageProjects());
+  clientForm.classList.toggle("hidden", !canManageProjects());
+  projectForm.classList.toggle("hidden", !canManageProjects());
+  conceptCard.classList.toggle("hidden", !isAdmin());
+  exportButton?.classList.toggle("hidden", !canExport());
+
+  if (!canManageUsers() && state.currentView === "users") {
+    state.currentView = "dashboard";
+  }
+  if (!canManageProjects() && (state.currentView === "clients" || state.currentView === "projects")) {
     state.currentView = "dashboard";
   }
 
@@ -691,13 +833,21 @@ loginForm.addEventListener("submit", async (event) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
 
     const userEmail = cred.user.email || email;
-    const isAdmin = ADMIN_EMAILS.includes(userEmail);
+    const matchedUser = getUserMatch(userEmail, inputUser);
+    const role =
+      matchedUser?.role ||
+      (ADMIN_EMAILS.includes(userEmail)
+        ? "admin"
+        : LEADER_EMAILS.includes(userEmail)
+          ? "lider"
+          : "empleado");
 
     state.currentUser = {
       id: cred.user.uid,
-      name: userEmail,
+      name: matchedUser?.name || userEmail,
       username: inputUser,
-      role: isAdmin ? "admin" : "empleado",
+      email: userEmail,
+      role,
     };
 
     setStatusMessage(loginMessage, "", "");
@@ -786,6 +936,10 @@ pageEl?.addEventListener("click", (e) => {
   }
 });
 
+window.addEventListener("resize", () => {
+  updateDeviceClass();
+});
+
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
     if (button.classList.contains("hidden")) {
@@ -801,10 +955,38 @@ exportButton?.addEventListener("click", () => {
     setStatusMessage(sheetStatusEl, "Inicia sesión para exportar.", "error");
     return;
   }
-  const header = ["Fecha","Cliente","Proyecto","Ciudad","Categoría","Soporte","Descripción","Valor","ComprobanteNombre","ComprobanteUrl"];
+  if (!canExport()) {
+    setStatusMessage(sheetStatusEl, "Solo un administrador puede exportar reportes.", "error");
+    return;
+  }
+  const header = [
+    "Fecha",
+    "Cliente",
+    "Proyecto",
+    "Ciudad",
+    "Categoría",
+    "Soporte",
+    "Descripción",
+    "Observaciones",
+    "Valor",
+    "ComprobanteNombre",
+    "ComprobanteUrl",
+  ];
   const rows = [header];
   state.expenses.forEach((e) => {
-    rows.push([e.date, e.clientName, e.projectName, e.city, e.category, e.supportType, e.description, e.amount, e.receiptName, e.receiptUrl]);
+    rows.push([
+      e.date,
+      e.clientName,
+      e.projectName,
+      e.city,
+      e.category,
+      e.supportType,
+      e.description,
+      e.notes,
+      e.amount,
+      e.receiptName,
+      e.receiptUrl,
+    ]);
   });
   const stamp = new Date().toISOString().slice(0,10);
   downloadCsv(`egresos-${stamp}.csv`, rows);
@@ -828,6 +1010,29 @@ expenseProject.addEventListener("change", () => {
   renderOptions();
 });
 
+projectList.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
+  if (!target.classList.contains("status-select")) {
+    return;
+  }
+  if (!canManageProjects()) {
+    return;
+  }
+  const projectId = target.dataset.project;
+  const project = state.projects.find((item) => item.id === projectId);
+  if (!project) {
+    return;
+  }
+  project.status = target.value;
+  persistState();
+  renderProjects();
+  renderBalances();
+  updateExpenseAvailability();
+});
+
 projectClient.addEventListener("change", () => {
   updateProjectCodeSuggestion();
 });
@@ -847,9 +1052,18 @@ receiptInput.addEventListener("change", (event) => {
 expenseForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const projectId = expenseProject.value;
+  const project = state.projects.find((item) => item.id === projectId);
   const remaining = calculateProjectBalance(projectId);
+  if (project && !isProjectVisibleToUser(project)) {
+    setStatusMessage(expenseMessage, "No tienes permiso para registrar gastos en este proyecto.", "error");
+    return;
+  }
   if (remaining <= 0) {
     setStatusMessage(expenseMessage, "La caja está en $0. No se puede registrar el egreso.", "error");
+    return;
+  }
+  if ((project?.status || "activo") === "inactivo") {
+    setStatusMessage(expenseMessage, "El proyecto está inactivo. No se puede registrar el egreso.", "error");
     return;
   }
 
@@ -860,7 +1074,6 @@ expenseForm.addEventListener("submit", async (event) => {
   }
 
   const client = state.clients.find((item) => item.id === expenseClient.value);
-  const project = state.projects.find((item) => item.id === projectId);
   const amount = Number(document.getElementById("expense-amount").value);
 
   if (amount > remaining) {
@@ -892,6 +1105,7 @@ expenseForm.addEventListener("submit", async (event) => {
     category: expenseCategory.value,
     supportType: expenseSupport.value,
     description: document.getElementById("expense-description").value.trim(),
+    notes: expenseNotes.value.trim(),
     amount,
     receiptName: receiptFile.name,
     receiptUrl,
@@ -899,7 +1113,7 @@ expenseForm.addEventListener("submit", async (event) => {
     clientName: client?.name ?? "",
     projectId: project?.id,
     projectName: project?.name ?? "",
-    city: project?.city ?? "",
+    city: expenseCity.value || project?.city || "",
     createdAt: new Date().toISOString(),
   };
 
@@ -909,6 +1123,7 @@ expenseForm.addEventListener("submit", async (event) => {
   expenseForm.reset();
   expenseCategory.value = "";
   expenseSupport.value = "";
+  expenseNotes.value = "";
   handleReceiptPreview(null);
   renderExpenses();
   renderRecentExpenses();
@@ -924,6 +1139,7 @@ expenseForm.addEventListener("submit", async (event) => {
         categoría: newExpense.category,
         "tipo soporte": newExpense.supportType,
         descripción: newExpense.description,
+        observaciones: newExpense.notes,
         valor: newExpense.amount,
         clienteId: newExpense.clientId,
         cliente: newExpense.clientName,
@@ -946,6 +1162,10 @@ expenseForm.addEventListener("submit", async (event) => {
 
 clientForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!canManageProjects()) {
+    setStatusMessage(clientMessage, "No tienes permisos para crear clientes.", "error");
+    return;
+  }
   const name = document.getElementById("client-name").value.trim();
   const city = document.getElementById("client-city").value.trim();
   const contact = document.getElementById("client-contact").value.trim();
@@ -993,19 +1213,26 @@ clientForm.addEventListener("submit", async (event) => {
 
 projectForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!canManageProjects()) {
+    setStatusMessage(projectMessage, "No tienes permisos para crear proyectos.", "error");
+    return;
+  }
   const clientId = projectClient.value;
   const client = state.clients.find((item) => item.id === clientId);
   const code = projectCodeInput.value.trim() || getSuggestedProjectCode();
   const name = document.getElementById("project-name").value.trim();
   const city = document.getElementById("project-city").value.trim();
+  const responsibleId = projectResponsible.value;
+  const responsible = state.users.find((user) => user.id === responsibleId);
   const baseAmount = Number(document.getElementById("project-base").value);
+  const notes = projectNotes.value.trim();
 
   if (!client) {
     setStatusMessage(projectMessage, "Seleccione un cliente válido.", "error");
     return;
   }
 
-  if (!code || !name || !city || !baseAmount) {
+  if (!code || !name || !city || !baseAmount || !responsible) {
     setStatusMessage(projectMessage, "Complete todos los campos del proyecto.", "error");
     return;
   }
@@ -1019,6 +1246,12 @@ projectForm.addEventListener("submit", async (event) => {
     name,
     city,
     baseAmount,
+    responsibleId: responsible.id,
+    responsibleName: responsible.name,
+    responsibleUsername: responsible.username,
+    responsibleEmail: responsible.email || "",
+    notes,
+    status: "activo",
   });
   persistState();
   setStatusMessage(projectMessage, "Proyecto creado.", "success");
@@ -1039,6 +1272,12 @@ projectForm.addEventListener("submit", async (event) => {
         name,
         city,
         baseAmount,
+        responsibleId: responsible.id,
+        responsibleName: responsible.name,
+        responsibleUsername: responsible.username,
+        responsibleEmail: responsible.email || "",
+        notes,
+        status: "activo",
       });
     } catch (error) {
       console.error("No fue posible sincronizar el proyecto", error);
@@ -1053,7 +1292,12 @@ projectForm.addEventListener("submit", async (event) => {
 
 userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!canManageUsers()) {
+    setStatusMessage(userMessage, "No tienes permisos para crear usuarios.", "error");
+    return;
+  }
   const name = document.getElementById("user-name").value.trim();
+  const email = document.getElementById("user-email").value.trim();
   const username = document.getElementById("user-username").value.trim();
   const password = document.getElementById("user-password").value.trim();
   const role = document.getElementById("user-role").value;
@@ -1067,6 +1311,7 @@ userForm.addEventListener("submit", async (event) => {
   state.users.push({
     id: userId,
     name,
+    email: email || "",
     username,
     password,
     role,
@@ -1081,6 +1326,7 @@ userForm.addEventListener("submit", async (event) => {
       await apiRequest("appendUser", {
         id: userId,
         name,
+        email: email || "",
         username,
         password,
         role,
@@ -1094,6 +1340,28 @@ userForm.addEventListener("submit", async (event) => {
       );
     }
   }
+});
+
+conceptForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!isAdmin()) {
+    setStatusMessage(conceptMessage, "Solo un administrador puede agregar conceptos.", "error");
+    return;
+  }
+  const concept = conceptNameInput.value.trim();
+  if (!concept) {
+    setStatusMessage(conceptMessage, "Escribe un concepto válido.", "error");
+    return;
+  }
+  if (state.concepts.some((item) => item.toLowerCase() === concept.toLowerCase())) {
+    setStatusMessage(conceptMessage, "El concepto ya existe.", "error");
+    return;
+  }
+  state.concepts.push(concept);
+  persistState();
+  setStatusMessage(conceptMessage, "Concepto agregado.", "success");
+  conceptForm.reset();
+  renderOptions();
 });
 
 
@@ -1111,13 +1379,21 @@ function attachAuthListener() {
     }
 
     const userEmail = user.email || "usuario";
-    const isAdmin = ADMIN_EMAILS.includes(userEmail);
+    const matchedUser = getUserMatch(userEmail, "");
+    const role =
+      matchedUser?.role ||
+      (ADMIN_EMAILS.includes(userEmail)
+        ? "admin"
+        : LEADER_EMAILS.includes(userEmail)
+          ? "lider"
+          : "empleado");
 
     state.currentUser = {
       id: user.uid,
-      name: userEmail,
+      name: matchedUser?.name || userEmail,
       username: userEmail,
-      role: isAdmin ? "admin" : "empleado",
+      email: userEmail,
+      role,
     };
 
     persistState();
@@ -1128,20 +1404,21 @@ function attachAuthListener() {
 function initApp() {
   if (sheetIdEl) sheetIdEl.textContent = CONFIG.sheetId;
   if (driveFolderEl) {
-  const folderLink = document.createElement("a");
-  folderLink.href = folderUrl;
-  folderLink.textContent = CONFIG.driveFolderId;
-  folderLink.target = "_blank";
-  folderLink.rel = "noreferrer";
-  folderLink.className = "link";
-  driveFolderEl.append(folderLink);
-}
+    const folderLink = document.createElement("a");
+    folderLink.href = folderUrl;
+    folderLink.textContent = CONFIG.driveFolderId;
+    folderLink.target = "_blank";
+    folderLink.rel = "noreferrer";
+    folderLink.className = "link";
+    driveFolderEl.append(folderLink);
+  }
 
   if (projectCodeInput) {
     projectCodeInput.dataset.auto = "true";
   }
 
   setStatusMessage(sheetStatusEl, getSheetStatusLabel());
+  updateDeviceClass();
   attachAuthListener();
   updateView();
   syncFromSheets();
