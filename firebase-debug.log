@@ -1,0 +1,84 @@
+[debug] [2026-01-09T20:52:34.013Z] ----------------------------------------------------------------------
+[debug] [2026-01-09T20:52:34.017Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Industrias Zabra\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init functions
+[debug] [2026-01-09T20:52:34.017Z] CLI Version:   15.2.1
+[debug] [2026-01-09T20:52:34.017Z] Platform:      win32
+[debug] [2026-01-09T20:52:34.017Z] Node Version:  v24.11.0
+[debug] [2026-01-09T20:52:34.018Z] Time:          Fri Jan 09 2026 15:52:34 GMT-0500 (hora estándar de Colombia)
+[debug] [2026-01-09T20:52:34.018Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\Industrias Zabra\OneDrive\Desktop\Ingenieria
+
+Before we get started, keep in mind:
+
+  * You are initializing within an existing Firebase project directory
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-01-09T20:52:53.554Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-09T20:52:53.554Z] > authorizing via signed-in user (info@msauditores.co)
+[debug] [2026-01-09T20:52:53.555Z] Checked if tokens are valid: false, expires at: 1767991856372
+[debug] [2026-01-09T20:52:53.555Z] Checked if tokens are valid: false, expires at: 1767991856372
+[debug] [2026-01-09T20:52:53.555Z] > refreshing access token with scopes: []
+[debug] [2026-01-09T20:52:53.562Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-01-09T20:52:53.562Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-01-09T20:52:53.832Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-01-09T20:52:53.832Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-01-09T20:52:54.179Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/ingenieria-sas [none]
+[debug] [2026-01-09T20:52:54.594Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/ingenieria-sas 200
+[debug] [2026-01-09T20:52:54.595Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/ingenieria-sas {"projectId":"ingenieria-sas","projectNumber":"856625753506","displayName":"Ingenieria","name":"projects/ingenieria-sas","resources":{"hostingSite":"ingenieria-sas"},"state":"ACTIVE","etag":"1_399bd4be-6f08-4eae-b932-a0e3c8950ebb"}
+[info] i  Using project ingenieria-sas (Ingenieria) . 
+[info] 
+=== Functions Setup
+[debug] [2026-01-09T20:52:54.652Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-09T20:52:54.652Z] > authorizing via signed-in user (info@msauditores.co)
+[debug] [2026-01-09T20:52:54.652Z] [iam] checking project ingenieria-sas for permissions ["firebase.projects.get"]
+[debug] [2026-01-09T20:52:54.652Z] Checked if tokens are valid: true, expires at: 1767995572832
+[debug] [2026-01-09T20:52:54.652Z] Checked if tokens are valid: true, expires at: 1767995572832
+[debug] [2026-01-09T20:52:54.652Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/ingenieria-sas:testIamPermissions [none]
+[debug] [2026-01-09T20:52:54.652Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/ingenieria-sas:testIamPermissions x-goog-quota-user=projects/ingenieria-sas
+[debug] [2026-01-09T20:52:54.652Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ingenieria-sas:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2026-01-09T20:52:55.183Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/ingenieria-sas:testIamPermissions 200
+[debug] [2026-01-09T20:52:55.183Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ingenieria-sas:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2026-01-09T20:52:55.184Z] Checked if tokens are valid: true, expires at: 1767995572832
+[debug] [2026-01-09T20:52:55.184Z] Checked if tokens are valid: true, expires at: 1767995572832
+[debug] [2026-01-09T20:52:55.184Z] Checked if tokens are valid: true, expires at: 1767995572832
+[debug] [2026-01-09T20:52:55.184Z] Checked if tokens are valid: true, expires at: 1767995572832
+[debug] [2026-01-09T20:52:55.184Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/cloudfunctions.googleapis.com [none]
+[debug] [2026-01-09T20:52:55.185Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/cloudfunctions.googleapis.com x-goog-quota-user=projects/ingenieria-sas
+[debug] [2026-01-09T20:52:55.186Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/runtimeconfig.googleapis.com [none]
+[debug] [2026-01-09T20:52:55.186Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/runtimeconfig.googleapis.com x-goog-quota-user=projects/ingenieria-sas
+[debug] [2026-01-09T20:52:55.677Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/cloudfunctions.googleapis.com 200
+[debug] [2026-01-09T20:52:55.677Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/cloudfunctions.googleapis.com [omitted]
+[debug] [2026-01-09T20:52:55.678Z] Checked if tokens are valid: true, expires at: 1767995572832
+[debug] [2026-01-09T20:52:55.678Z] Checked if tokens are valid: true, expires at: 1767995572832
+[debug] [2026-01-09T20:52:55.678Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/cloudfunctions.googleapis.com:enable [none]
+[debug] [2026-01-09T20:52:55.678Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/cloudfunctions.googleapis.com:enable x-goog-quota-user=projects/ingenieria-sas
+[debug] [2026-01-09T20:52:55.964Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/runtimeconfig.googleapis.com 200
+[debug] [2026-01-09T20:52:55.964Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/runtimeconfig.googleapis.com [omitted]
+[debug] [2026-01-09T20:52:56.343Z] <<< [apiv2][status] POST https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/cloudfunctions.googleapis.com:enable 200
+[debug] [2026-01-09T20:52:56.344Z] <<< [apiv2][body] POST https://serviceusage.googleapis.com/v1/projects/ingenieria-sas/services/cloudfunctions.googleapis.com:enable [omitted]
+[info] Let's create a new codebase for your functions.
+[info] A directory corresponding to the codebase will be created in your project
+[info] with sample code pre-configured.
+
+[info] See https://firebase.google.com/docs/functions/organize-functions for
+[info] more information on organizing your functions using codebases.
+
+[info] Functions can be deployed with firebase deploy.
+
+[info] +  Wrote functions/package.json 
+[info] +  Wrote functions/index.js 
+[info] +  Wrote functions/.gitignore 
