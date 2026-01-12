@@ -205,11 +205,13 @@ body {
 }
 
 .login__logo {
-  width: 72px;
-  height: 72px;
-  border-radius: 18px;
+  width: 140px;
+  height: 140px;
+  border-radius: 20px;
   margin: 0 auto;
-  object-fit: cover;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 6px;
 }
 
 .app {
@@ -267,6 +269,7 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
+  align-items: start;
 }
 
 .form {
@@ -420,6 +423,17 @@ textarea {
   color: var(--cyan);
   text-decoration: none;
   word-break: break-all;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.report-status {
+  display: grid;
+  gap: 6px;
 }
 
 .header__menu {
