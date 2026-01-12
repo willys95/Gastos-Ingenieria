@@ -14,16 +14,7 @@ const STORAGE_KEY = "gastos-ingenieria-state";
 
 const defaultState = {
   currentUser: null,
-  users: [
-    {
-      id: "u_admin",
-      name: "Administrador",
-      email: "",
-      username: "admin",
-      password: "Sami123+",
-      role: "admin",
-    },
-  ],
+  users: [],
   clients: [],
   projects: [],
   expenses: [],
@@ -46,7 +37,6 @@ const defaultState = {
 
 let state = loadState();
 
-const sheetIdEl = document.getElementById("sheet-id");
 const driveFolderEl = document.getElementById("drive-folder");
 const sheetStatusEl = document.getElementById("sheet-status");
 const loginSection = document.getElementById("login-section");
@@ -69,6 +59,9 @@ const exportButton = document.getElementById("export-button");
 const menuToggle = document.getElementById("menu-toggle");
 const pageEl = document.querySelector(".page");
 const sidebar = document.getElementById("sidebar");
+const mainHeader = document.querySelector(".main__header");
+const mainNav = document.getElementById("main-nav");
+const sidebarMeta = document.getElementById("sidebar-meta");
 
 
 const statClients = document.getElementById("stat-clients");
@@ -201,6 +194,11 @@ function updateHeader(viewName) {
       eyebrow: "Egresos",
       title: "Registro de gastos",
       subtitle: "Adjunta el soporte fotográfico y controla el saldo disponible.",
+    },
+    reports: {
+      eyebrow: "Reportes",
+      title: "Reportes y sincronización",
+      subtitle: "Centraliza los respaldos y exporta los egresos cuando lo necesites.",
     },
     users: {
       eyebrow: "Usuarios",
@@ -591,6 +589,9 @@ function updateView() {
   loginSection.classList.toggle("hidden", isLoggedIn);
   appSection.classList.toggle("hidden", !isLoggedIn);
   document.getElementById("user-card").classList.toggle("hidden", !isLoggedIn);
+  mainHeader?.classList.toggle("hidden", !isLoggedIn);
+  mainNav?.classList.toggle("hidden", !isLoggedIn);
+  sidebarMeta?.classList.toggle("hidden", !isLoggedIn);
 
   if (!isLoggedIn) {
     return;
@@ -623,6 +624,22 @@ function updateView() {
   renderUsers();
 
   setActiveView(state.currentView || "dashboard");
+}
+
+async function syncEmployeesFromFirestore() {
+  if (!window.__fb?.db || !window.__fb?.collection || !window.__fb?.getDocs) {
+    return;
+  }
+  try {
+    const snapshot = await window.__fb.getDocs(window.__fb.collection(window.__fb.db, "employees"));
+    state.users = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }));
+    persistState();
+  } catch (error) {
+    console.error("No fue posible leer empleados desde Firestore.", error);
+  }
 }
 
 function renderSimpleSelect(selectEl, items, placeholder) {
@@ -853,6 +870,7 @@ loginForm.addEventListener("submit", async (event) => {
     setStatusMessage(loginMessage, "", "");
     loginForm.reset();
     persistState();
+    await syncEmployeesFromFirestore();
     updateView();
   } catch (e) {
     console.error(e);
@@ -1300,7 +1318,7 @@ userForm.addEventListener("submit", async (event) => {
   const email = document.getElementById("user-email").value.trim();
   const username = document.getElementById("user-username").value.trim();
   const password = document.getElementById("user-password").value.trim();
-  const role = document.getElementById("user-role").value;
+  const role = "empleado";
 
   if (state.users.some((user) => user.username === username)) {
     setStatusMessage(userMessage, "El usuario ya existe.", "error");
@@ -1308,18 +1326,32 @@ userForm.addEventListener("submit", async (event) => {
   }
 
   const userId = `user_${crypto.randomUUID()}`;
-  state.users.push({
+  const newUser = {
     id: userId,
     name,
     email: email || "",
     username,
     password,
     role,
-  });
+  };
+  state.users.push(newUser);
   persistState();
   setStatusMessage(userMessage, "Usuario creado.", "success");
   userForm.reset();
   renderUsers();
+
+  if (window.__fb?.db && window.__fb?.setDoc && window.__fb?.doc) {
+    try {
+      await window.__fb.setDoc(window.__fb.doc(window.__fb.db, "employees", userId), newUser);
+    } catch (error) {
+      console.error("No fue posible sincronizar el empleado", error);
+      setStatusMessage(
+        userMessage,
+        "Empleado guardado localmente, pero no se pudo guardar en Firestore.",
+        "error",
+      );
+    }
+  }
 
   if (isSyncEnabled()) {
     try {
@@ -1397,12 +1429,13 @@ function attachAuthListener() {
     };
 
     persistState();
-    updateView();
+    syncEmployeesFromFirestore().finally(() => {
+      updateView();
+    });
   });
 }
 
 function initApp() {
-  if (sheetIdEl) sheetIdEl.textContent = CONFIG.sheetId;
   if (driveFolderEl) {
     const folderLink = document.createElement("a");
     folderLink.href = folderUrl;
