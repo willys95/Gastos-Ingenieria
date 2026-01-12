@@ -14,7 +14,7 @@
     <div class="page">
       <aside class="sidebar" id="sidebar">
         <div class="brand">
-          <img src="LOGO1.jpeg" alt="Logo Gastos Ingeniería" class="brand__logo" />
+          <img src="LOGO1.jpg" alt="Logo Gastos Ingeniería" class="brand__logo" />
           <div>
             <p class="brand__title">Gastos Ingeniería</p>
             <p class="brand__subtitle">Control de caja menor</p>
@@ -350,6 +350,7 @@
         onAuthStateChanged,
         signOut,
         sendPasswordResetEmail,
+        createUserWithEmailAndPassword,
       } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
       import {
         getFirestore,
@@ -359,7 +360,7 @@
         getDocs,
         setDoc,
       } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
+    
       // 🔴 PEGA aquí tu firebaseConfig (Firebase Console → Project settings → Your apps → Web)
       const firebaseConfig = {
         apiKey: "AIzaSyAOR0mDTR_MAULqNioSdgRH8IoDv_Lp4rI",
@@ -367,13 +368,19 @@
         projectId: "ingenieria-sas",
         appId: "1:856625753506:web:68fbe9c28a79ee703756fb",
       };
-
+    
+      // App principal (sesión normal)
       const fbApp = initializeApp(firebaseConfig);
       const auth = getAuth(fbApp);
       const db = getFirestore(fbApp);
-
+    
+      // App secundaria SOLO para crear usuarios sin tumbar la sesión del admin
+      const fbAdminApp = initializeApp(firebaseConfig, "adminSecondary");
+      const adminAuth = getAuth(fbAdminApp);
+    
       window.__fb = {
         auth,
+        adminAuth, // 👈 importante
         db,
         collection,
         doc,
@@ -384,8 +391,10 @@
         onAuthStateChanged,
         signOut,
         sendPasswordResetEmail,
+        createUserWithEmailAndPassword,
       };
     </script>
+    
 
     <script src="app.js"></script>
   </body>
