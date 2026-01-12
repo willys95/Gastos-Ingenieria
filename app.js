@@ -11,6 +11,8 @@ const LEADER_EMAILS = [];
 
 
 const STORAGE_KEY = "gastos-ingenieria-state";
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
+const SESSION_KEY = "gastos-ingenieria-session";
 
 const defaultState = {
   currentUser: null,
@@ -36,6 +38,7 @@ const defaultState = {
 };
 
 let state = loadState();
+let sessionTimeoutId = null;
 
 const driveFolderEl = document.getElementById("drive-folder");
 const sheetStatusEl = document.getElementById("sheet-status");
@@ -131,6 +134,92 @@ function loadState() {
 
 function persistState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function persistSession(user, expiresAt) {
+  if (!user) {
+    localStorage.removeItem(SESSION_KEY);
+    return;
+  }
+  const payload = {
+    user,
+    expiresAt: expiresAt ?? Date.now() + SESSION_TIMEOUT_MS,
+  };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+function readSession() {
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    console.error("Error leyendo la sesión local", error);
+    return null;
+  }
+}
+
+function refreshSession() {
+  const current = readSession();
+  if (!current?.user) {
+    return;
+  }
+  persistSession(current.user);
+}
+
+function isSessionValid(session) {
+  return Boolean(session?.user && session?.expiresAt && Date.now() < session.expiresAt);
+}
+
+function scheduleSessionExpiry(expiresAt) {
+  if (sessionTimeoutId) {
+    clearTimeout(sessionTimeoutId);
+    sessionTimeoutId = null;
+  }
+  if (!expiresAt) {
+    return;
+  }
+  const remaining = expiresAt - Date.now();
+  if (remaining <= 0) {
+    handleSessionExpired();
+    return;
+  }
+  sessionTimeoutId = window.setTimeout(() => {
+    handleSessionExpired();
+  }, remaining);
+}
+
+function handleSessionExpired() {
+  clearSession();
+  state.currentUser = null;
+  persistState();
+  updateView();
+  if (window.__fb?.auth && window.__fb?.signOut) {
+    window.__fb.signOut(window.__fb.auth).catch((error) => {
+      console.error("No fue posible cerrar sesión en Firebase.", error);
+    });
+  }
+}
+
+function attachActivityListeners() {
+  const refresh = () => {
+    if (!state.currentUser) {
+      return;
+    }
+    const current = readSession();
+    const baseUser = current?.user || state.currentUser;
+    persistSession(baseUser);
+    scheduleSessionExpiry(Date.now() + SESSION_TIMEOUT_MS);
+  };
+  ["click", "keydown", "mousemove", "scroll", "touchstart"].forEach((eventName) => {
+    window.addEventListener(eventName, refresh, { passive: true });
+  });
 }
 
 
@@ -870,6 +959,8 @@ loginForm.addEventListener("submit", async (event) => {
     setStatusMessage(loginMessage, "", "");
     loginForm.reset();
     persistState();
+    persistSession(state.currentUser);
+    scheduleSessionExpiry(Date.now() + SESSION_TIMEOUT_MS);
     await syncEmployeesFromFirestore();
     updateView();
   } catch (e) {
@@ -888,6 +979,7 @@ logoutButton.addEventListener("click", async () => {
     console.error(e);
   }
   state.currentUser = null;
+  clearSession();
   persistState();
   updateView();
 });
@@ -1404,7 +1496,16 @@ function attachAuthListener() {
 
   window.__fb.onAuthStateChanged(window.__fb.auth, (user) => {
     if (!user) {
+      const session = readSession();
+      if (isSessionValid(session)) {
+        state.currentUser = session.user;
+        persistState();
+        scheduleSessionExpiry(session.expiresAt);
+        updateView();
+        return;
+      }
       state.currentUser = null;
+      clearSession();
       persistState();
       updateView();
       return;
@@ -1429,6 +1530,8 @@ function attachAuthListener() {
     };
 
     persistState();
+    persistSession(state.currentUser);
+    scheduleSessionExpiry(Date.now() + SESSION_TIMEOUT_MS);
     syncEmployeesFromFirestore().finally(() => {
       updateView();
     });
@@ -1452,7 +1555,14 @@ function initApp() {
 
   setStatusMessage(sheetStatusEl, getSheetStatusLabel());
   updateDeviceClass();
+  const session = readSession();
+  if (isSessionValid(session)) {
+    state.currentUser = session.user;
+    persistState();
+    scheduleSessionExpiry(session.expiresAt);
+  } 
   attachAuthListener();
+  attachActivityListeners();
   updateView();
   syncFromSheets();
 }
