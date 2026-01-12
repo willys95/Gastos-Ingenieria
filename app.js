@@ -727,20 +727,24 @@ function updateView() {
   setActiveView(state.currentView || "dashboard");
 }
 
-async function syncEmployeesFromFirestore() {
+async function syncUsersFromFirestore() {
   if (!window.__fb?.db || !window.__fb?.collection || !window.__fb?.getDocs) {
     return;
   }
   try {
     await refreshFirebaseToken(true);
-    const snapshot = await window.__fb.getDocs(window.__fb.collection(window.__fb.db, "employees"));
+    const snapshot = await window.__fb.getDocs(
+      window.__fb.collection(window.__fb.db, "users")
+    );
+
     state.users = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
+      id: docSnap.id, // uid real
       ...docSnap.data(),
     }));
+
     persistState();
   } catch (error) {
-    console.error("No fue posible leer empleados desde Firestore.", error);
+    console.error("No fue posible leer usuarios desde Firestore.", error);
   }
 }
 
@@ -923,50 +927,53 @@ loginForm.addEventListener("submit", async (event) => {
       return;
     }
 
-    // Si escribe correo, ok. Si escribe username, buscamos el correo:
-    // Firestore: collection "usernames" / doc "<username_en_minusculas>" / field "email"
+    // 1) Resolver email: si escribe correo, úsalo; si escribe username, buscar en /usernames/{usernameLower}
     let email = inputUser;
-    if (!email.includes("@")) {
-      const usernameKey = inputUser.toLowerCase();
-      const { db, doc, getDoc } = window.__fb;
-      let snap;
-      try {
-        snap = await getDoc(doc(db, "usernames", usernameKey));
-      } catch (err) {
-        console.error(err);
-        setStatusMessage(loginMessage, "No se pudo validar el usuario (Firestore).", "error");
+    if (!inputUser.includes("@")) {
+      if (!window.__fb?.db || !window.__fb?.doc || !window.__fb?.getDoc) {
+        setStatusMessage(loginMessage, "Firestore no está inicializado.", "error");
         return;
       }
-      if (!snap.exists()) {
+      const usernameKey = inputUser.toLowerCase();
+      const ref = window.__fb.doc(window.__fb.db, "usernames", usernameKey);
+      const snap = await window.__fb.getDoc(ref);
+      if (!snap.exists() || !snap.data()?.email) {
         setStatusMessage(loginMessage, "Usuario no encontrado.", "error");
         return;
       }
       email = snap.data().email;
-      if (!email) {
-        setStatusMessage(loginMessage, "Usuario sin correo asociado.", "error");
-        return;
-      }
     }
 
-    const { auth, signInWithEmailAndPassword } = window.__fb;
-    const cred = await signInWithEmailAndPassword(auth, email, password);
+    // 2) Login Auth
+    const cred = await window.__fb.signInWithEmailAndPassword(window.__fb.auth, email, password);
 
-    const userEmail = cred.user.email || email;
-    const matchedUser = getUserMatch(userEmail, inputUser);
-    const role =
-      matchedUser?.role ||
-      (ADMIN_EMAILS.includes(userEmail)
-        ? "admin"
-        : LEADER_EMAILS.includes(userEmail)
-          ? "lider"
-          : "empleado");
+    // 3) Leer perfil desde /users/{uid} (Opción B). Si no existe, lo creamos como empleado.
+    const uid = cred.user.uid;
+    const userRef = window.__fb.doc(window.__fb.db, "users", uid);
+    const userSnap = await window.__fb.getDoc(userRef);
 
+    let profile = null;
+
+    if (userSnap.exists()) {
+      profile = userSnap.data();
+    } else {
+      profile = {
+        name: cred.user.email || "usuario",
+        email: cred.user.email || "",
+        username: inputUser.includes("@") ? "" : inputUser,
+        role: "empleado",
+        createdAt: Date.now(),
+      };
+      await window.__fb.setDoc(userRef, profile);
+    }
+
+    // 4) Guardar sesión en state
     state.currentUser = {
-      id: cred.user.uid,
-      name: matchedUser?.name || userEmail,
-      username: inputUser,
-      email: userEmail,
-      role,
+      id: uid,
+      name: profile.name || (cred.user.email || "usuario"),
+      username: profile.username || (inputUser.includes("@") ? "" : inputUser),
+      email: profile.email || (cred.user.email || ""),
+      role: profile.role || "empleado",
     };
 
     setStatusMessage(loginMessage, "", "");
@@ -974,7 +981,10 @@ loginForm.addEventListener("submit", async (event) => {
     persistState();
     persistSession(state.currentUser);
     scheduleSessionExpiry(Date.now() + SESSION_TIMEOUT_MS);
-    await syncEmployeesFromFirestore();
+
+    // 5) Cargar lista de usuarios solo si corresponde (tu UI ya controla el menú)
+    await syncUsersFromFirestore();
+
     updateView();
   } catch (e) {
     console.error(e);
@@ -1415,68 +1425,88 @@ projectForm.addEventListener("submit", async (event) => {
 
 userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+
   if (!canManageUsers()) {
     setStatusMessage(userMessage, "No tienes permisos para crear usuarios.", "error");
     return;
   }
+
   const name = document.getElementById("user-name").value.trim();
   const email = document.getElementById("user-email").value.trim();
   const username = document.getElementById("user-username").value.trim();
   const password = document.getElementById("user-password").value.trim();
-  const role = "empleado";
+  const role = "empleado"; // o toma el valor del select si lo tienes
 
-  if (state.users.some((user) => user.username === username)) {
+  if (!email) {
+    setStatusMessage(userMessage, "El correo es obligatorio para crear el usuario.", "error");
+    return;
+  }
+  if (!username) {
+    setStatusMessage(userMessage, "El username es obligatorio.", "error");
+    return;
+  }
+  if (!password || password.length < 6) {
+    setStatusMessage(userMessage, "La contraseña debe tener al menos 6 caracteres.", "error");
+    return;
+  }
+
+  const usernameKey = username.toLowerCase();
+
+  // Validación local (si ya cargaste usuarios)
+  if (state.users.some((u) => (u.username || "").toLowerCase() === usernameKey)) {
     setStatusMessage(userMessage, "El usuario ya existe.", "error");
     return;
   }
 
-  const userId = `user_${crypto.randomUUID()}`;
-  const newUser = {
-    id: userId,
-    name,
-    email: email || "",
-    username,
-    password,
-    role,
-  };
-  state.users.push(newUser);
-  persistState();
-  setStatusMessage(userMessage, "Usuario creado.", "success");
-  userForm.reset();
-  renderUsers();
+  try {
+    setStatusMessage(userMessage, "Creando usuario...", "loading");
+    await refreshFirebaseToken(true);
 
-  if (window.__fb?.db && window.__fb?.setDoc && window.__fb?.doc) {
-    try {
-      await refreshFirebaseToken(true);
-      await window.__fb.setDoc(window.__fb.doc(window.__fb.db, "employees", userId), newUser);
-    } catch (error) {
-      console.error("No fue posible sincronizar el empleado", error);
+    const { db, doc, getDoc, setDoc, adminAuth, createUserWithEmailAndPassword } = window.__fb;
+
+    if (!adminAuth) {
       setStatusMessage(
         userMessage,
-        "Empleado guardado localmente, pero no se pudo guardar en Firestore.",
-        "error",
+        "adminAuth no está inicializado. Revisa el script module en index.html.",
+        "error"
       );
+      return;
     }
-  }
 
-  if (isSyncEnabled()) {
-    try {
-      await apiRequest("appendUser", {
-        id: userId,
-        name,
-        email: email || "",
-        username,
-        password,
-        role,
-      });
-    } catch (error) {
-      console.error("No fue posible sincronizar el usuario", error);
-      setStatusMessage(
-        userMessage,
-        "Usuario guardado localmente, pero no se pudo sincronizar con Google Sheets.",
-        "error",
-      );
+    // 1) Verificar que username no esté tomado en /usernames
+    const usernameRef = doc(db, "usernames", usernameKey);
+    const usernameSnap = await getDoc(usernameRef);
+    if (usernameSnap.exists()) {
+      setStatusMessage(userMessage, "Ese username ya está tomado.", "error");
+      return;
     }
+
+    // 2) Crear usuario en Auth usando Auth secundario (no cambia sesión del admin)
+    const newCred = await createUserWithEmailAndPassword(adminAuth, email, password);
+    const newUid = newCred.user.uid;
+
+    // 3) Guardar perfil en /users/{uid} (sin password)
+    const newUserProfile = {
+      name: name || username,
+      email,
+      username,
+      role,
+      createdAt: Date.now(),
+    };
+    await setDoc(doc(db, "users", newUid), newUserProfile);
+
+    // 4) Guardar username -> email en /usernames/{usernameLower}
+    await setDoc(usernameRef, { email });
+
+    // 5) Refrescar listado de usuarios
+    await syncUsersFromFirestore();
+    renderUsers();
+
+    setStatusMessage(userMessage, "Usuario creado (Auth + Firestore).", "success");
+    userForm.reset();
+  } catch (error) {
+    console.error(error);
+    setStatusMessage(userMessage, "No se pudo crear el usuario.", "error");
   }
 });
 
@@ -1546,7 +1576,7 @@ function attachAuthListener() {
     persistState();
     persistSession(state.currentUser);
     scheduleSessionExpiry(Date.now() + SESSION_TIMEOUT_MS);
-    syncEmployeesFromFirestore().finally(() => {
+    syncUsersFromFirestore().finally(() => {
       updateView();
     });
   });
