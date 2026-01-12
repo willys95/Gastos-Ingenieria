@@ -207,6 +207,18 @@ function handleSessionExpired() {
   }
 }
 
+async function refreshFirebaseToken(force = false) {
+  const currentUser = window.__fb?.auth?.currentUser;
+  if (!currentUser?.getIdToken) {
+    return;
+  }
+  try {
+    await currentUser.getIdToken(force);
+  } catch (error) {
+    console.warn("No fue posible refrescar el token de Firebase.", error);
+  }
+}
+
 function attachActivityListeners() {
   const refresh = () => {
     if (!state.currentUser) {
@@ -720,6 +732,7 @@ async function syncEmployeesFromFirestore() {
     return;
   }
   try {
+    await refreshFirebaseToken(true);
     const snapshot = await window.__fb.getDocs(window.__fb.collection(window.__fb.db, "employees"));
     state.users = snapshot.docs.map((docSnap) => ({
       id: docSnap.id,
@@ -1434,6 +1447,7 @@ userForm.addEventListener("submit", async (event) => {
 
   if (window.__fb?.db && window.__fb?.setDoc && window.__fb?.doc) {
     try {
+      await refreshFirebaseToken(true);
       await window.__fb.setDoc(window.__fb.doc(window.__fb.db, "employees", userId), newUser);
     } catch (error) {
       console.error("No fue posible sincronizar el empleado", error);
