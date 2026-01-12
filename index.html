@@ -34,23 +34,11 @@
           <button class="nav__item" data-view="clients" id="clients-nav">Clientes</button>
           <button class="nav__item" data-view="projects" id="projects-nav">Proyectos</button>
           <button class="nav__item" data-view="expenses">Egresos</button>
+          <button class="nav__item" data-view="reports" id="reports-nav">Reportes</button>
           <button class="nav__item" data-view="users" id="users-nav">Usuarios</button>
         </nav>
 
-        <div class="sidebar__meta">
-          <div>
-            <span class="label">Sheet ID</span>
-            <p id="sheet-id"></p>
-          </div>
-          <div>
-            <span class="label">Carpeta Drive</span>
-            <p id="drive-folder"></p>
-          </div>
-          <div>
-            <span class="label">Estado</span>
-            <p id="sheet-status" class="status-message"></p>
-          </div>
-        </div>
+        <div class="sidebar__meta hidden" id="sidebar-meta"></div>
       </aside>
 
       <main class="main">
@@ -64,8 +52,6 @@
           </div>
           <div class="header__actions">
             <button class="button button--ghost header__menu" id="menu-toggle" type="button" aria-label="Abrir menú">☰</button>      
-            <button class="button button--ghost" id="sync-button" type="button">Guardar</button>
-            <button class="button button--ghost" id="export-button" type="button">Exportar Excel</button>
           </div>
         </header>
 
@@ -87,7 +73,7 @@
               <p class="form__helper" id="login-message"></p>
               <button type="button" class="button button--ghost" id="reset-password">¿Olvidaste tu contraseña?</button>
             </form>
-</div>
+          </div>
         </section>
 
         <section class="app hidden" id="app-section">
@@ -290,6 +276,29 @@
             </div>
           </div>
 
+          <div class="view" data-view="reports">
+            <div class="card-grid">
+              <div class="card">
+                <div class="card__header">
+                  <h3>Reportes y sincronización</h3>
+                  <p>Guarda los cambios y exporta el historial de egresos cuando sea necesario.</p>
+                </div>
+                <div class="report-actions">
+                  <button class="button button--ghost" id="sync-button" type="button">Guardar</button>
+                  <button class="button button--ghost" id="export-button" type="button">Exportar Excel</button>
+                </div>
+                <div class="report-status">
+                  <span class="label">Estado</span>
+                  <p id="sheet-status" class="status-message"></p>
+                </div>
+                <div class="report-status">
+                  <span class="label">Carpeta Drive</span>
+                  <p id="drive-folder"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="view" data-view="users" id="admin-section">
             <div class="card-grid">
               <form id="user-form" class="form card">
@@ -313,8 +322,6 @@
                 <label>
                   Rol
                   <select id="user-role" required>
-                    <option value="admin">Administrador</option>
-                    <option value="lider">Líder</option>
                     <option value="empleado">Empleado</option>
                   </select>
                 </label>
@@ -346,8 +353,11 @@
       } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
       import {
         getFirestore,
+        collection,
         doc,
         getDoc,
+        getDocs,
+        setDoc,
       } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
       // 🔴 PEGA aquí tu firebaseConfig (Firebase Console → Project settings → Your apps → Web)
@@ -365,8 +375,11 @@
       window.__fb = {
         auth,
         db,
+        collection,
         doc,
         getDoc,
+        getDocs,
+        setDoc,
         signInWithEmailAndPassword,
         onAuthStateChanged,
         signOut,
