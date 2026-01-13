@@ -58,6 +58,12 @@ window.__fb = {
 
 console.log("✅ Firebase listo. Functions region:", window.__fb?.functions?._region || "N/A");
 
+const FUNCTIONS_REGION = window.__fb?.functions?._region || "us-central1";
+const FUNCTIONS_PROJECT_ID = window.__fb?.functions?.app?.options?.projectId;
+const CREATE_USER_URL = FUNCTIONS_PROJECT_ID
+  ? `https://${FUNCTIONS_REGION}-${FUNCTIONS_PROJECT_ID}.cloudfunctions.net/createUserAccount`
+  : "https://us-central1-ingenieria-sas.cloudfunctions.net/createUserAccount";
+
 // ===================== CONFIG =====================
 const CONFIG = {
   sheetId: "1tLdiGfhlSR0jsXT89jk-dDGfhci-Y3IAiECoR2g5RCo",
@@ -930,14 +936,31 @@ userForm.addEventListener("submit", async (event) => {
   try {
     setStatusMessage(userMessage, "Creando usuario...", "loading");
 
-    const createUserAccount = window.__fb.httpsCallable(window.__fb.functions, "createUserAccount");
+    const authUser = window.__fb.auth.currentUser;
+    if (!authUser) {
+      throw new Error("Debes iniciar sesión para crear usuarios.");
+    }
 
     const payload = { name, username, password, role };
     if (email) payload.email = email;
 
-    const res = await createUserAccount(payload);
+    const token = await authUser.getIdToken(true);
+    const response = await fetch(CREATE_USER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
 
-    setStatusMessage(userMessage, `Usuario creado: ${username} (${res.data.email})`, "success");
+    const responseBody = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(responseBody?.error?.message || "No se pudo crear el usuario.");
+    }
+    const res = responseBody;
+
+    setStatusMessage(userMessage, `Usuario creado: ${username} (${res.email})`, "success");
     userForm.reset();
 
     await syncUsersFromFirestore();
