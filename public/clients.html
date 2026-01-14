@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Clientes · Control de Proyectos</title>
+  <link rel="stylesheet" href="./styles.css"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand__logo" src="./assets/logo.png" alt="Logo"/>
+      <div class="brand__title">Control de Proyectos</div>
+    </div>
+    <div class="topbar__right">
+      <span class="badge" id="user-badge">Sin sesión</span>
+      <button class="button button--ghost" id="logout-btn" type="button">Salir</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <nav class="nav">
+        <a href="./dashboard.html" class="">Panel</a>
+        <a href="./clients.html" class="is-active" data-role="manageProjects">Clientes</a>
+        <a href="./projects.html" class="" data-role="manageProjects">Proyectos</a>
+        <a href="./expenses.html" class="">Gastos</a>
+        <a href="./users.html" class="" data-role="adminOnly">Usuarios</a>
+      </nav>
+      <div class="sidebar__meta">
+        <div><b>Hosting:</b> Firebase</div>
+        <div><b>Datos:</b> Firestore + Storage</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      
+  <div>
+    <h1 class="h1">Clientes</h1>
+    <p class="sub">Registra clientes. Solo admin/líder pueden crear y ver esta sección.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Crear cliente</h3>
+      <form class="form" id="client-form">
+        <label>Nombre
+          <input id="c-name" required/>
+        </label>
+        <label>Ciudad principal
+          <input id="c-city" required/>
+        </label>
+        <label>Contacto (opcional)
+          <input id="c-contact" placeholder="Nombre o correo"/>
+        </label>
+        <button class="button" type="submit">Guardar</button>
+        <p class="notice" id="c-msg"></p>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Listado</h3>
+      <p>Clientes registrados.</p>
+      <div class="list" id="client-list"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { db, fb } from "./js/firebase.js";
+    import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa } from "./js/common.js";
+
+    const { profile, role } = await requireAuth({ allowedRoles:["admin","lider"] });
+    fillUserBadge(profile);
+    setActiveNav();
+
+    qsa('[data-role="manageProjects"]').forEach(a => a.classList.remove("hidden"));
+    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
+
+    const form = document.querySelector("#client-form");
+    const msg = document.querySelector("#c-msg");
+    const list = document.querySelector("#client-list");
+
+    async function render(){
+      const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("createdAt","desc")));
+      const clients = snap.docs.map(d=>({id:d.id,...d.data()}));
+      list.innerHTML = "";
+      if(!clients.length){
+        list.innerHTML = `<p class="sub">Aún no hay clientes.</p>`;
+        return;
+      }
+      clients.forEach(c=>{
+        const item=document.createElement("div");
+        item.className="item";
+        item.innerHTML = `
+          <div class="item__head"><span>${c.name}</span><span>${c.city}</span></div>
+          <div class="item__meta">${c.contact || ""}</div>
+        `;
+        list.append(item);
+      });
+    }
+
+    form.addEventListener("submit", async (e)=>{
+      e.preventDefault();
+      try{
+        setNotice(msg,"Guardando...","loading");
+        const payload = {
+          name: document.querySelector("#c-name").value.trim(),
+          city: document.querySelector("#c-city").value.trim(),
+          contact: document.querySelector("#c-contact").value.trim(),
+          createdAt: fb.serverTimestamp(),
+        };
+        await fb.addDoc(fb.collection(db,"clients"), payload);
+        form.reset();
+        setNotice(msg,"Cliente creado.","success");
+        await render();
+      }catch(err){
+        console.error(err);
+        setNotice(msg,"No se pudo guardar.","error");
+      }
+    });
+
+    await render();
+  </script>
+
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth, setActiveNav, fillUserBadge, logout, qsa } from "./js/common.js";
+    const { profile, role } = await requireAuth();
+    fillUserBadge(profile);
+    setActiveNav();
+    document.querySelector("#logout-btn")?.addEventListener("click", logout);
+
+    // Ocultar links según rol
+    const manage = role === "admin" || role === "lider";
+    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
+    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
+  </script>
+</body>
+</html>

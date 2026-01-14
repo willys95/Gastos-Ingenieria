@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Usuarios · Control de Proyectos</title>
+  <link rel="stylesheet" href="./styles.css"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand__logo" src="./assets/logo.png" alt="Logo"/>
+      <div class="brand__title">Control de Proyectos</div>
+    </div>
+    <div class="topbar__right">
+      <span class="badge" id="user-badge">Sin sesión</span>
+      <button class="button button--ghost" id="logout-btn" type="button">Salir</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <nav class="nav">
+        <a href="./dashboard.html" class="">Panel</a>
+        <a href="./clients.html" class="" data-role="manageProjects">Clientes</a>
+        <a href="./projects.html" class="" data-role="manageProjects">Proyectos</a>
+        <a href="./expenses.html" class="">Gastos</a>
+        <a href="./users.html" class="is-active" data-role="adminOnly">Usuarios</a>
+      </nav>
+      <div class="sidebar__meta">
+        <div><b>Hosting:</b> Firebase</div>
+        <div><b>Datos:</b> Firestore + Storage</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      
+  <div>
+    <h1 class="h1">Usuarios</h1>
+    <p class="sub">Solo el administrador puede crear usuarios y asignar roles.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Crear usuario</h3>
+      <form class="form" id="u-form">
+        <label>Nombre
+          <input id="u-name" required/>
+        </label>
+        <label>Correo (recomendado)
+          <input id="u-email" type="email" placeholder="correo@empresa.com" required/>
+        </label>
+        <label>Usuario (username)
+          <input id="u-username" required/>
+        </label>
+        <label>Contraseña
+          <input id="u-pass" type="password" minlength="6" required/>
+        </label>
+        <label>Rol
+          <select id="u-role" required>
+            <option value="lider">Líder</option>
+            <option value="empleado">Empleado</option>
+          </select>
+        </label>
+        <button class="button" type="submit">Crear</button>
+        <p class="notice" id="u-msg"></p>
+      </form>
+      <p class="sub" style="margin-top:10px;font-size:12px;">Los usuarios podrán recuperar su clave con el botón “Olvidé mi contraseña” en el login.</p>
+    </div>
+
+    <div class="card">
+      <h3>Listado</h3>
+      <p>Usuarios en Firestore.</p>
+      <div class="list" id="u-list"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { db, fb, functions } from "./js/firebase.js";
+    import { requireAuth, fillUserBadge, setActiveNav, setNotice } from "./js/common.js";
+
+    const { profile } = await requireAuth({ allowedRoles:["admin"] });
+    fillUserBadge(profile);
+    setActiveNav();
+
+    const form = document.querySelector("#u-form");
+    const msg = document.querySelector("#u-msg");
+    const list = document.querySelector("#u-list");
+
+    async function render(){
+      list.innerHTML="";
+      const snap = await fb.getDocs(fb.query(fb.collection(db,"users"), fb.orderBy("createdAt","desc")));
+      const users = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      if(!users.length){
+        list.innerHTML = `<p class="sub">Aún no hay usuarios.</p>`;
+        return;
+      }
+      users.forEach(u=>{
+        const item=document.createElement("div");
+        item.className="item";
+        item.innerHTML=`
+          <div class="item__head"><span>${u.name || "—"}</span><span>${u.role || "—"}</span></div>
+          <div class="item__meta">${u.email || ""}</div>
+          <div class="item__meta">Username: ${u.username || ""}</div>
+        `;
+        list.append(item);
+      });
+    }
+
+    form.addEventListener("submit", async (e)=>{
+      e.preventDefault();
+      try{
+        setNotice(msg,"Creando...","loading");
+        const payload = {
+          name: document.querySelector("#u-name").value.trim(),
+          email: document.querySelector("#u-email").value.trim(),
+          username: document.querySelector("#u-username").value.trim(),
+          password: document.querySelector("#u-pass").value.trim(),
+          role: document.querySelector("#u-role").value,
+        };
+
+        const createUserAccount = fb.httpsCallable(functions, "createUserAccount");
+        const res = await createUserAccount(payload);
+        setNotice(msg, `Usuario creado: ${res.data.email}`, "success");
+        form.reset();
+        await render();
+      }catch(err){
+        console.error(err);
+        setNotice(msg, err?.message || "No se pudo crear el usuario.", "error");
+      }
+    });
+
+    await render();
+  </script>
+
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth, setActiveNav, fillUserBadge, logout, qsa } from "./js/common.js";
+    const { profile, role } = await requireAuth();
+    fillUserBadge(profile);
+    setActiveNav();
+    document.querySelector("#logout-btn")?.addEventListener("click", logout);
+
+    // Ocultar links según rol
+    const manage = role === "admin" || role === "lider";
+    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
+    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
+  </script>
+</body>
+</html>

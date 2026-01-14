@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Ingreso · Control de Proyectos</title>
+  <link rel="stylesheet" href="./styles.css"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
+</head>
+<body style="background: var(--navy);">
+  <div class="container" style="min-height:100vh;display:grid;place-items:center;">
+    <div class="card" style="max-width:460px;width:100%;text-align:center;">
+      <img src="./assets/logol.jpeg" alt="Logolargo" style="width:240px;height:120px;border-radius:22px;background:#fff;object-fit:contain;margin:0 auto;display:block;"/>
+      <h1 class="h1" style="margin-top:14px;">Ingreso</h1>
+      <p class="sub">Entra con tu <b>correo o usuario</b>. Si olvidaste tu clave, puedes recuperarla.</p>
+
+      <form class="form" id="login-form">
+        <label>Correo o usuario
+          <input id="login-user" autocomplete="username" required/>
+        </label>
+        <label>Contraseña
+          <input id="login-pass" type="password" autocomplete="current-password" required/>
+        </label>
+        <button class="button" type="submit">Entrar</button>
+        <p class="notice" id="login-msg"></p>
+        <button class="button button--ghost" id="reset-btn" type="button">Olvidé mi contraseña</button>
+      </form>
+
+      <p class="sub" style="margin-top:14px;font-size:12px;">
+        Nota: el administrador crea los usuarios (líder/empleado). 
+      </p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { auth, fb } from "./js/firebase.js";
+    import { setNotice, usernameToEmail } from "./js/common.js";
+
+    const form = document.querySelector("#login-form");
+    const msg = document.querySelector("#login-msg");
+    const resetBtn = document.querySelector("#reset-btn");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const inputUser = document.querySelector("#login-user").value.trim();
+      const pass = document.querySelector("#login-pass").value.trim();
+
+      try{
+        setNotice(msg,"Validando...","loading");
+        let email = await usernameToEmail(inputUser);
+        if(!email) email = inputUser; // si era correo
+        if(!email.includes("@")){
+          setNotice(msg,"Usuario no encontrado. Escribe un correo o username válido.","error");
+          return;
+        }
+        await fb.signInWithEmailAndPassword(auth, email, pass);
+        window.location.href = "./dashboard.html";
+      }catch(err){
+        console.error(err);
+        setNotice(msg,"Credenciales inválidas.","error");
+      }
+    });
+
+    resetBtn.addEventListener("click", async () => {
+      const inputUser = document.querySelector("#login-user").value.trim();
+      if(!inputUser){
+        setNotice(msg,"Escribe tu correo o usuario para restablecer.","error");
+        return;
+      }
+      try{
+        setNotice(msg,"Enviando correo...","loading");
+        let email = await usernameToEmail(inputUser);
+        if(!email) email = inputUser;
+        if(!email.includes("@")){
+          setNotice(msg,"Usuario no encontrado.","error");
+          return;
+        }
+        await fb.sendPasswordResetEmail(auth, email);
+        setNotice(msg,"Te enviamos un correo para restablecer tu contraseña.","success");
+      }catch(err){
+        console.error(err);
+        setNotice(msg,"No fue posible enviar el correo de restablecimiento.","error");
+      }
+    });
+  </script>
+</body>
+</html>
