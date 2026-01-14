@@ -39,19 +39,24 @@
       
       <div>
         <h1 class="h1">Gastos</h1>
-        <p class="sub">Registra gastos por proyecto. Los empleados solo ven sus proyectos asignados.</p>
+        <p class="sub">Registra gastos. Solo se muestran clientes con proyectos activos y saldo disponible.</p>
       </div>
 
       <div class="grid">
         <div class="card">
           <h3>Registrar gasto</h3>
           <form class="form" id="e-form">
-            <label>Cliente
+            <label>Cliente (Con saldo disponible)
               <select id="e-client" required></select>
             </label>
             <label>Proyecto
-              <select id="e-project" required></select>
+              <select id="e-project" required disabled><option>Seleccione cliente...</option></select>
             </label>
+            
+            <div id="project-info" style="font-size: 0.9rem; color: #64748b; margin-bottom: 1rem; display:none;">
+              Saldo disponible: <b id="p-balance" style="color: #0f172a;">$0</b>
+            </div>
+
             <div class="row">
               <label>Fecha
                 <input id="e-date" type="date" required/>
@@ -72,21 +77,23 @@
             <div class="file-preview" id="e-preview">
               <span class="file-preview__label">Sin archivo</span>
             </div>
-            <button class="button" type="submit">Guardar</button>
+            <button class="button" type="submit">Guardar y Descontar</button>
             <p class="notice" id="e-msg"></p>
           </form>
-          <p class="sub" style="margin-top:10px;font-size:12px;">El archivo se guarda en Firebase Storage (comprimido).</p>
+          <p class="sub" style="margin-top:10px;font-size:12px;">El archivo se comprime antes de subir para ahorrar datos.</p>
         </div>
 
         <div class="card">
-          <h3>Historial</h3>
-          <p>Últimos registros visibles para tu rol.</p>
+          <h3>Historial Reciente</h3>
+          <p>Últimos registros guardados.</p>
           <div class="list" id="e-list"></div>
         </div>
       </div>
 
       <script type="module">
         import { db, storage, fb } from "./js/firebase.js";
+        // Importamos increment para la base de datos
+        import { increment } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
         import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa, logout } from "./js/common.js";
 
         // 1. Autenticación
@@ -99,7 +106,7 @@
         qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
         qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
 
-        // 2. Variables
+        // 2. DOM Elements
         const form = document.querySelector("#e-form");
         const msg = document.querySelector("#e-msg");
         const list = document.querySelector("#e-list");
@@ -108,51 +115,50 @@
         const catSel = document.querySelector("#e-category");
         const fileInput = document.querySelector("#e-file");
         const preview = document.querySelector("#e-preview");
+        const balanceInfo = document.querySelector("#project-info");
+        const balanceDisplay = document.querySelector("#p-balance");
 
         const DEFAULT_CATEGORIES = [
           "Transporte","Alimentación","Hospedaje","Compra de materiales",
           "Pago a terceros","Impuestos","Servicios","Viáticos","Nómina","Otros"
         ];
 
-        // --- FUNCIÓN DE COMPRESIÓN ---
-        async function compressImage(file, { quality = 0.7, maxWidth = 1024 } = {}) {
-          return new Promise((resolve, reject) => {
-            if (!file.type.startsWith("image/")) {
-              return reject(new Error("El archivo no es una imagen válida."));
-            }
-
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-              const img = new Image();
-              img.src = event.target.result;
-              img.onload = () => {
-                let width = img.width;
-                let height = img.height;
-                if (width > maxWidth) {
-                  height = Math.round((height * maxWidth) / width);
-                  width = maxWidth;
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                canvas.toBlob((blob) => {
-                  if (!blob) return reject(new Error("Fallo al procesar imagen."));
-                  const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
-                    type: "image/jpeg",
-                    lastModified: Date.now(),
-                  });
-                  resolve(newFile);
-                }, 'image/jpeg', quality);
-              };
-              img.onerror = () => reject(new Error("Imagen corrupta."));
-            };
-            reader.onerror = () => reject(new Error("Error leyendo archivo."));
-          });
+        // --- COMPRESIÓN SEGURA ---
+        async function compressImage(file, { quality = 0.6, maxWidth = 1200 } = {}) {
+            return new Promise((resolve, reject) => {
+                if (!file) return reject(new Error("No file provided"));
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        let w = img.width, h = img.height;
+                        if (w > maxWidth) {
+                            h = Math.round((h * maxWidth) / w);
+                            w = maxWidth;
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        
+                        canvas.toBlob((blob) => {
+                            if (!blob) return reject(new Error("Error de compresión"));
+                            const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                                type: "image/jpeg",
+                                lastModified: Date.now(),
+                            });
+                            resolve(newFile);
+                        }, 'image/jpeg', quality);
+                    };
+                    img.onerror = () => reject(new Error("Imagen inválida"));
+                };
+                reader.onerror = () => reject(new Error("Error al leer archivo"));
+            });
         }
-        // -----------------------------
+        // -------------------------
 
         function opt(sel,value,label){
           const o=document.createElement("option"); o.value=value; o.textContent=label; sel.append(o);
@@ -171,46 +177,80 @@
         }
         fileInput.addEventListener("change", ()=> setPreview(fileInput.files?.[0] || null));
 
-        let clients = [];
-        let projects = [];
+        // Data State
+        let allClients = [];
+        let validProjects = []; // Proyectos activos y con saldo
 
-        async function loadVisibleProjects(){
-          if(manage){
-            const snap = await fb.getDocs(fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc")));
-            projects = snap.docs.map(d=>({id:d.id,...d.data()}));
-          }else{
-            const q = fb.query(fb.collection(db,"projects"), fb.where("responsibleUid","==", user.uid), fb.orderBy("createdAt","desc"));
-            const snap = await fb.getDocs(q);
-            projects = snap.docs.map(d=>({id:d.id,...d.data()}));
-          }
+        // CARGA DE DATOS INTELIGENTE
+        async function loadData(){
+            // 1. Cargar Proyectos
+            let qProjects;
+            if(manage){
+                qProjects = fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc"));
+            } else {
+                qProjects = fb.query(fb.collection(db,"projects"), fb.where("responsibleUid","==", user.uid), fb.orderBy("createdAt","desc"));
+            }
+            const snapProj = await fb.getDocs(qProjects);
+            const rawProjects = snapProj.docs.map(d=>({id:d.id, ...d.data()}));
+
+            // 2. Filtrar: Activos Y con Saldo > 0
+            validProjects = rawProjects.filter(p => {
+                const isActive = (p.status || 'activo') === 'activo';
+                // Asumimos que si no existe 'spent', es 0
+                const remaining = (p.baseAmount || 0) - (p.spent || 0);
+                return isActive && remaining > 0;
+            });
+
+            // 3. Cargar Clientes
+            const snapClients = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("name")));
+            const rawClients = snapClients.docs.map(d=>({id:d.id, ...d.data()}));
+
+            // 4. Filtrar Clientes: Solo los que tienen proyectos válidos
+            const validClientIds = new Set(validProjects.map(p => p.clientId));
+            allClients = rawClients.filter(c => validClientIds.has(c.id));
+
+            renderClientSelect();
         }
 
-        async function loadClients(){
-          const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("name")));
-          clients = snap.docs.map(d=>({id:d.id,...d.data()}));
-          if(!manage){
-            const clientIds = new Set(projects.map(p=>p.clientId));
-            clients = clients.filter(c=>clientIds.has(c.id));
-          }
-        }
-
-        // MOSTRAR NOMBRE Y CIUDAD
         function renderClientSelect(){
-          clientSel.innerHTML="";
-          opt(clientSel,"","Seleccione");
-          clients.forEach(c => {
-             // Muestra "Davivienda - Cartagena"
-             opt(clientSel, c.id, `${c.name} - ${c.city}`); 
-          });
+            clientSel.innerHTML="";
+            opt(clientSel,"","Seleccione Cliente");
+            allClients.forEach(c => {
+                opt(clientSel, c.id, `${c.name} - ${c.city}`);
+            });
         }
 
         function renderProjectSelect(){
-          projectSel.innerHTML="";
-          opt(projectSel,"","Seleccione");
-          const cid = clientSel.value;
-          const list = projects.filter(p=>p.clientId===cid);
-          list.forEach(p=>opt(projectSel,p.id, `${p.code} · ${p.name || ""}`));
+            projectSel.innerHTML="";
+            opt(projectSel,"","Seleccione Proyecto");
+            projectSel.disabled = true;
+            balanceInfo.style.display = "none";
+            
+            const cid = clientSel.value;
+            if(!cid) return;
+
+            const list = validProjects.filter(p => p.clientId === cid);
+            list.forEach(p => {
+                const rem = (p.baseAmount||0) - (p.spent||0);
+                opt(projectSel, p.id, `${p.code} (${money(rem)})`);
+            });
+            projectSel.disabled = false;
         }
+
+        // Mostrar saldo al seleccionar proyecto
+        projectSel.addEventListener("change", () => {
+            const pid = projectSel.value;
+            if(!pid) { balanceInfo.style.display="none"; return; }
+            
+            const p = validProjects.find(x => x.id === pid);
+            if(p){
+                const rem = (p.baseAmount||0) - (p.spent||0);
+                balanceDisplay.textContent = money(rem);
+                balanceInfo.style.display = "block";
+            }
+        });
+
+        clientSel.addEventListener("change", renderProjectSelect);
 
         function renderCategories(){
           catSel.innerHTML="";
@@ -218,79 +258,75 @@
           DEFAULT_CATEGORIES.forEach(c=>opt(catSel,c,c));
         }
 
-        clientSel.addEventListener("change", renderProjectSelect);
-
         async function renderExpenses(){
           list.innerHTML="";
-          const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(60));
+          // Solo mostramos los últimos 15 para no saturar
+          const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(15));
           const snap = await fb.getDocs(q);
-          let expenses = snap.docs.map(d=>({id:d.id,...d.data()}));
+          const expenses = snap.docs.map(d=>({id:d.id,...d.data()}));
+          
+          if(!expenses.length){ list.innerHTML=`<p class="sub">Sin registros.</p>`; return; }
 
-          if(!manage){
-            const my = new Set(projects.map(p=>p.id));
-            expenses = expenses.filter(e=>my.has(e.projectId));
-          }
-
-          if(!expenses.length){
-            list.innerHTML = `<p class="sub">Aún no hay gastos.</p>`;
-            return;
-          }
-
-          expenses.slice(0,20).forEach(e=>{
+          expenses.forEach(e=>{
             const item=document.createElement("div");
             item.className="item";
             item.innerHTML=`
               <div class="item__head">
-                <span>${e.category || "Gasto"}</span>
+                <span>${e.category}</span>
                 <span>${money(e.amount)}</span>
               </div>
-              <div class="item__meta">${e.date || ""} · ${e.projectName || ""}</div>
-              <div class="item__meta">${e.description || ""}</div>
-              <div class="item__meta">Soporte: ${
-                e.receiptUrl ? `<a href="${e.receiptUrl}" target="_blank" rel="noreferrer">ver</a>` : "—"
-              }</div>
+              <div class="item__meta">${e.date} · ${e.projectName}</div>
+              <div class="item__meta">Soporte: ${e.receiptUrl ? `<a href="${e.receiptUrl}" target="_blank">Ver</a>` : "—"}</div>
             `;
             list.append(item);
           });
         }
 
+        // --- GUARDAR ---
         form.addEventListener("submit", async (e)=>{
           e.preventDefault();
           try{
-            setNotice(msg,"Preparando imagen...","loading");
-            
+            setNotice(msg,"Validando...", "loading");
+
             const cid = clientSel.value;
             const pid = projectSel.value;
-            const client = clients.find(c=>c.id===cid);
-            const project = projects.find(p=>p.id===pid);
-            if(!project){ setNotice(msg,"Selecciona un proyecto.","error"); return; }
-            if(!manage && project.responsibleUid !== user.uid){
-              setNotice(msg,"No tienes permiso sobre este proyecto.","error"); return;
+            const amount = Number(document.querySelector("#e-amount").value);
+            
+            const project = validProjects.find(p => p.id === pid);
+            if(!project){ throw new Error("Proyecto inválido."); }
+
+            // 1. VALIDAR FONDOS (Doble chequeo)
+            const currentRemaining = (project.baseAmount||0) - (project.spent||0);
+            if(amount > currentRemaining){
+                throw new Error(`Fondos insuficientes. Disponible: ${money(currentRemaining)}`);
             }
 
-            const originalFile = fileInput.files?.[0];
-            if(!originalFile){ setNotice(msg,"Adjunta el soporte (foto).","error"); return; }
+            // 2. COMPRIMIR
+            const file = fileInput.files?.[0];
+            if(!file) throw new Error("Falta el soporte (imagen).");
+            
+            setNotice(msg,"Comprimiendo imagen...", "loading");
+            const compressedFile = await compressImage(file);
 
-            // COMPRESIÓN
-            const compressedFile = await compressImage(originalFile, { quality: 0.7, maxWidth: 1024 });
-
-            setNotice(msg,"Subiendo...","loading");
-
-            // SUBIDA
+            // 3. SUBIR A STORAGE
+            setNotice(msg,"Subiendo archivo...", "loading");
             const safeName = compressedFile.name.replace(/[^a-zA-Z0-9._-]/g,"_");
             const path = `receipts/${pid}/${Date.now()}_${safeName}`;
             const storageRef = fb.ref(storage, path);
+            
             await fb.uploadBytes(storageRef, compressedFile);
             const url = await fb.getDownloadURL(storageRef);
 
-            // GUARDADO DATOS
-            const payload = {
+            // 4. GUARDAR GASTO Y ACTUALIZAR PROYECTO (Atomico idealmente, pero secuencial funciona aqui)
+            setNotice(msg,"Registrando...", "loading");
+
+            const expensePayload = {
               clientId: cid,
-              clientName: client?.name || "",
+              clientName: allClients.find(c=>c.id===cid)?.name || "",
               projectId: pid,
-              projectName: `${project.code} · ${project.name || ""}`,
+              projectName: `${project.code} · ${project.name}`,
               date: document.querySelector("#e-date").value,
-              amount: Number(document.querySelector("#e-amount").value),
+              amount: amount,
               category: catSel.value,
               description: document.querySelector("#e-desc").value.trim(),
               receiptUrl: url,
@@ -300,24 +336,34 @@
               createdAt: fb.serverTimestamp(),
             };
 
-            await fb.addDoc(fb.collection(db,"expenses"), payload);
+            // A) Crear documento de gasto
+            await fb.addDoc(fb.collection(db,"expenses"), expensePayload);
+
+            // B) DESCONTAR DE LA BASE (Actualizar proyecto)
+            // Usamos 'increment' de Firestore para sumar al campo 'spent' de forma segura
+            await fb.updateDoc(fb.doc(db, "projects", pid), {
+                spent: increment(amount)
+            });
 
             form.reset();
             setPreview(null);
-            setNotice(msg,"Gasto guardado.","success");
+            balanceInfo.style.display="none";
+            
+            setNotice(msg, "Gasto guardado y descontado.", "success");
+            
+            // Recargar datos para actualizar saldos
+            await loadData();
             await renderExpenses();
+
           }catch(err){
-            console.error("ERROR GUARDANDO:", err);
-            setNotice(msg, "Error: " + (err.message || "No se pudo guardar."), "error");
+            console.error("Error:", err);
+            setNotice(msg, err.message || "Error desconocido", "error");
           }
         });
 
         // Init
         renderCategories();
-        await loadVisibleProjects();
-        await loadClients();
-        renderClientSelect();
-        renderProjectSelect();
+        await loadData();
         await renderExpenses();
       </script>
 
