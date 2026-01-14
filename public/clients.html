@@ -10,6 +10,7 @@
 <body>
   <header class="topbar">
     <div class="brand">
+      <button id="menu-toggle" class="menu-toggle">☰</button> 
       <img class="brand__logo" src="./assets/logo.png" alt="Logo"/>
       <div class="brand__title">Control de Proyectos</div>
     </div>
@@ -36,107 +37,103 @@
 
     <main class="main">
       
-  <div>
-    <h1 class="h1">Clientes</h1>
-    <p class="sub">Registra clientes. Solo admin/líder pueden crear y ver esta sección.</p>
-  </div>
+      <div>
+        <h1 class="h1">Clientes</h1>
+        <p class="sub">Registra clientes. Solo admin/líder pueden crear y ver esta sección.</p>
+      </div>
 
-  <div class="grid">
-    <div class="card">
-      <h3>Crear cliente</h3>
-      <form class="form" id="client-form">
-        <label>Nombre
-          <input id="c-name" required/>
-        </label>
-        <label>Ciudad principal
-          <input id="c-city" required/>
-        </label>
-        <label>Contacto (opcional)
-          <input id="c-contact" placeholder="Nombre o correo"/>
-        </label>
-        <button class="button" type="submit">Guardar</button>
-        <p class="notice" id="c-msg"></p>
-      </form>
-    </div>
+      <div class="grid">
+        <div class="card">
+          <h3>Crear cliente</h3>
+          <form class="form" id="client-form">
+            <label>Nombre
+              <input id="c-name" required/>
+            </label>
+            <label>Ciudad principal
+              <input id="c-city" required/>
+            </label>
+            <label>Contacto (opcional)
+              <input id="c-contact" placeholder="Nombre o correo"/>
+            </label>
+            <button class="button" type="submit">Guardar</button>
+            <p class="notice" id="c-msg"></p>
+          </form>
+        </div>
 
-    <div class="card">
-      <h3>Listado</h3>
-      <p>Clientes registrados.</p>
-      <div class="list" id="client-list"></div>
-    </div>
-  </div>
+        <div class="card">
+          <h3>Listado</h3>
+          <p>Clientes registrados.</p>
+          <div class="list" id="client-list"></div>
+        </div>
+      </div>
 
-  <script type="module">
-    import { db, fb } from "./js/firebase.js";
-    import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa } from "./js/common.js";
+      <script type="module">
+        import { db, fb } from "./js/firebase.js";
+        // Importamos 'logout' aquí directamente
+        import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa, logout } from "./js/common.js";
 
-    const { profile, role } = await requireAuth({ allowedRoles:["admin","lider"] });
-    fillUserBadge(profile);
-    setActiveNav();
+        // 1. Autenticación y Configuración Inicial
+        const { profile, role } = await requireAuth({ allowedRoles:["admin","lider"] });
+        fillUserBadge(profile);
+        setActiveNav();
 
-    qsa('[data-role="manageProjects"]').forEach(a => a.classList.remove("hidden"));
-    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
+        // 2. Configurar Botón Salir
+        document.querySelector("#logout-btn")?.addEventListener("click", logout);
 
-    const form = document.querySelector("#client-form");
-    const msg = document.querySelector("#c-msg");
-    const list = document.querySelector("#client-list");
+        // 3. Manejo de Roles en UI
+        // Como ya pasó el requireAuth, sabemos que es admin o lider, mostramos gestión
+        qsa('[data-role="manageProjects"]').forEach(a => a.classList.remove("hidden"));
+        // El link de usuarios solo si es admin
+        qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
 
-    async function render(){
-      const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("createdAt","desc")));
-      const clients = snap.docs.map(d=>({id:d.id,...d.data()}));
-      list.innerHTML = "";
-      if(!clients.length){
-        list.innerHTML = `<p class="sub">Aún no hay clientes.</p>`;
-        return;
-      }
-      clients.forEach(c=>{
-        const item=document.createElement("div");
-        item.className="item";
-        item.innerHTML = `
-          <div class="item__head"><span>${c.name}</span><span>${c.city}</span></div>
-          <div class="item__meta">${c.contact || ""}</div>
-        `;
-        list.append(item);
-      });
-    }
+        // 4. Lógica de Clientes
+        const form = document.querySelector("#client-form");
+        const msg = document.querySelector("#c-msg");
+        const list = document.querySelector("#client-list");
 
-    form.addEventListener("submit", async (e)=>{
-      e.preventDefault();
-      try{
-        setNotice(msg,"Guardando...","loading");
-        const payload = {
-          name: document.querySelector("#c-name").value.trim(),
-          city: document.querySelector("#c-city").value.trim(),
-          contact: document.querySelector("#c-contact").value.trim(),
-          createdAt: fb.serverTimestamp(),
-        };
-        await fb.addDoc(fb.collection(db,"clients"), payload);
-        form.reset();
-        setNotice(msg,"Cliente creado.","success");
+        async function render(){
+          const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("createdAt","desc")));
+          const clients = snap.docs.map(d=>({id:d.id,...d.data()}));
+          list.innerHTML = "";
+          if(!clients.length){
+            list.innerHTML = `<p class="sub">Aún no hay clientes.</p>`;
+            return;
+          }
+          clients.forEach(c=>{
+            const item=document.createElement("div");
+            item.className="item";
+            item.innerHTML = `
+              <div class="item__head"><span>${c.name}</span><span>${c.city}</span></div>
+              <div class="item__meta">${c.contact || ""}</div>
+            `;
+            list.append(item);
+          });
+        }
+
+        form.addEventListener("submit", async (e)=>{
+          e.preventDefault();
+          try{
+            setNotice(msg,"Guardando...","loading");
+            const payload = {
+              name: document.querySelector("#c-name").value.trim(),
+              city: document.querySelector("#c-city").value.trim(),
+              contact: document.querySelector("#c-contact").value.trim(),
+              createdAt: fb.serverTimestamp(),
+            };
+            await fb.addDoc(fb.collection(db,"clients"), payload);
+            form.reset();
+            setNotice(msg,"Cliente creado.","success");
+            await render();
+          }catch(err){
+            console.error(err);
+            setNotice(msg,"No se pudo guardar.","error");
+          }
+        });
+
         await render();
-      }catch(err){
-        console.error(err);
-        setNotice(msg,"No se pudo guardar.","error");
-      }
-    });
-
-    await render();
-  </script>
+      </script>
 
     </main>
   </div>
-
-  <script type="module">
-    import { requireAuth, setActiveNav, fillUserBadge, logout, qsa } from "./js/common.js";
-    const { profile, role } = await requireAuth();
-    fillUserBadge(profile);
-    setActiveNav();
-    document.querySelector("#logout-btn")?.addEventListener("click", logout);
-
-    // Ocultar links según rol
-    const manage = role === "admin" || role === "lider";
-    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
-    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
-  </script>
 </body>
 </html>

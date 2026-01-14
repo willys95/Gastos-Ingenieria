@@ -42,44 +42,26 @@ export function requireAuth(options={}){
         return;
       }
 
-      // === BOTÓN ADMIN (solo visible para tu correo) ===
-      let btnBootstrap = document.getElementById("btnBootstrapAdmin");
+  // LOGICA DEL MENU MOVIL
+        const toggleBtn = document.getElementById("menu-toggle");
+        const sidebar = document.querySelector(".sidebar");
+        if(toggleBtn && sidebar){
+          toggleBtn.addEventListener("click", () => {
+            sidebar.classList.toggle("is-open");
+          });
+          
+          // Cerrar menú al hacer click fuera (opcional)
+          document.addEventListener("click", (e) => {
+            if (!sidebar.contains(e.target) && !toggleBtn.contains(e.target) && sidebar.classList.contains("is-open")) {
+              sidebar.classList.remove("is-open");
+            }
+          });
+        }
 
-      if (!btnBootstrap) {
-        btnBootstrap = document.createElement("button");
-        btnBootstrap.id = "btnBootstrapAdmin";
-        btnBootstrap.textContent = "Convertirme en Admin";
-
-        btnBootstrap.style.marginLeft = "12px";
-        btnBootstrap.style.padding = "6px 12px";
-        btnBootstrap.style.borderRadius = "8px";
-        btnBootstrap.style.border = "none";
-        btnBootstrap.style.cursor = "pointer";
-        btnBootstrap.style.background = "#2563eb";
-        btnBootstrap.style.color = "#fff";
-
-        const header = document.querySelector("header") || document.body;
-        header.appendChild(btnBootstrap);
-      }
-
-      // Mostrar solo al correo permitido
-      const email = (user.email || "").toLowerCase();
-      btnBootstrap.style.display =
-        email === "info@msauditores.co" ? "inline-block" : "none";
-
-      // ✅ Un solo onclick (y no promete algo que no hace)
-      btnBootstrap.onclick = async () => {
-        alert(
-          "Este botón está desactivado porque NO estamos usando Functions.\n\n" +
-          "Para ser ADMIN debes crear/editar tu rol en Firestore:\n" +
-          "users/{TU_UID} -> role: 'admin'"
-        );
-      };
-
-      resolve({ user, profile, role });
+        resolve({ user, profile, role });
+      });
     });
-  });
-}
+  }
 
 export function setActiveNav(){
   const path = window.location.pathname.split("/").pop();

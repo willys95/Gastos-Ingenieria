@@ -10,6 +10,7 @@
 <body>
   <header class="topbar">
     <div class="brand">
+      <button id="menu-toggle" class="menu-toggle">☰</button>
       <img class="brand__logo" src="./assets/logo.png" alt="Logo"/>
       <div class="brand__title">Control de Proyectos</div>
     </div>
@@ -36,180 +37,255 @@
 
     <main class="main">
       
-  <div>
-    <h1 class="h1">Proyectos</h1>
-    <p class="sub">Crea proyectos, asigna responsable y base inicial.</p>
-  </div>
+      <div>
+        <h1 class="h1">Proyectos</h1>
+        <p class="sub">Crea proyectos con código automático. El código se basa en Cliente-Ciudad.</p>
+      </div>
 
-  <div class="grid">
-    <div class="card">
-      <h3>Crear proyecto</h3>
-      <form class="form" id="p-form">
-        <label>Cliente
-          <select id="p-client" required></select>
-        </label>
-        <div class="row">
-          <label>Código
-            <input id="p-code" required/>
-          </label>
-          <label>Ciudad
-            <input id="p-city" required/>
-          </label>
+      <div class="grid">
+        <div class="card">
+          <h3>Crear proyecto</h3>
+          <form class="form" id="p-form">
+            <label>Cliente
+              <select id="p-client" required>
+                <option value="">Cargando...</option>
+              </select>
+            </label>
+
+            <div class="row">
+              <label>Ciudad
+                <select id="p-city" required disabled>
+                  <option value="">Seleccione Cliente primero</option>
+                </select>
+              </label>
+              
+              <label>Código (Automático)
+                <input id="p-code" readonly placeholder="Ej: DAV-CAR-0001" style="background:#f1f5f9; cursor:not-allowed; font-weight:bold;"/>
+              </label>
+            </div>
+
+            <label>Responsable
+              <select id="p-resp" required></select>
+            </label>
+            
+            <label>Base inicial
+              <input id="p-base" type="number" min="1" required/>
+            </label>
+            <label>Notas (opcional)
+              <textarea id="p-notes" rows="3"></textarea>
+            </label>
+            <button class="button" type="submit">Guardar Proyecto</button>
+            <p class="notice" id="p-msg"></p>
+          </form>
         </div>
-        <label>Nombre
-          <input id="p-name" required/>
-        </label>
-        <label>Responsable (empleado)
-          <select id="p-resp" required></select>
-        </label>
-        <label>Base inicial
-          <input id="p-base" type="number" min="1" required/>
-        </label>
-        <label>Notas (opcional)
-          <textarea id="p-notes" rows="3"></textarea>
-        </label>
-        <button class="button" type="submit">Guardar</button>
-        <p class="notice" id="p-msg"></p>
-      </form>
-    </div>
 
-    <div class="card">
-      <h3>Listado</h3>
-      <p>Activa/inactiva proyectos (admin/líder).</p>
-      <div class="list" id="p-list"></div>
-    </div>
-  </div>
+        <div class="card">
+          <h3>Listado</h3>
+          <p>Proyectos activos e inactivos.</p>
+          <div class="list" id="p-list"></div>
+        </div>
+      </div>
 
-  <script type="module">
-    import { db, fb } from "./js/firebase.js";
-    import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa } from "./js/common.js";
+      <script type="module">
+        import { db, fb } from "./js/firebase.js";
+        // Importamos 'logout' aquí directamente
+        import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa, logout } from "./js/common.js";
 
-    const { profile, role } = await requireAuth({ allowedRoles:["admin","lider"] });
-    fillUserBadge(profile);
-    setActiveNav();
+        // 1. Autenticación y UI Básica
+        const { profile, role } = await requireAuth({ allowedRoles:["admin","lider"] });
+        fillUserBadge(profile);
+        setActiveNav();
+        
+        // 2. Configurar Botón Salir
+        document.querySelector("#logout-btn")?.addEventListener("click", logout);
 
-    qsa('[data-role="manageProjects"]').forEach(a => a.classList.remove("hidden"));
-    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
+        // 3. Manejo de Roles
+        qsa('[data-role="manageProjects"]').forEach(a => a.classList.remove("hidden"));
+        qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
 
-    const form = document.querySelector("#p-form");
-    const msg = document.querySelector("#p-msg");
-    const list = document.querySelector("#p-list");
-    const clientSel = document.querySelector("#p-client");
-    const respSel = document.querySelector("#p-resp");
+        // 4. Lógica de Proyectos
+        const form = document.querySelector("#p-form");
+        const msg = document.querySelector("#p-msg");
+        const list = document.querySelector("#p-list");
+        const clientSel = document.querySelector("#p-client");
+        const citySel = document.querySelector("#p-city");
+        const codeInput = document.querySelector("#p-code");
+        const respSel = document.querySelector("#p-resp");
 
-    function opt(sel, value, label){
-      const o=document.createElement("option"); o.value=value; o.textContent=label; sel.append(o);
-    }
+        let allClients = []; 
+        let allProjects = []; 
 
-    async function loadClients(){
-      clientSel.innerHTML="";
-      opt(clientSel,"","Seleccione");
-      const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("name")));
-      snap.docs.forEach(d=> opt(clientSel,d.id, d.data().name));
-    }
+        function opt(sel, value, label){
+          const o=document.createElement("option"); o.value=value; o.textContent=label; sel.append(o);
+        }
 
-    async function loadEmployees(){
-      respSel.innerHTML="";
-      opt(respSel,"","Seleccione");
-      const snap = await fb.getDocs(fb.query(fb.collection(db,"users"), fb.where("role","==","empleado"), fb.orderBy("name")));
-      snap.docs.forEach(d=>{
-        const u=d.data();
-        opt(respSel,d.id, u.name || u.email || d.id);
-      });
-    }
+        // A. Cargar Clientes
+        async function loadClients(){
+          clientSel.innerHTML="";
+          opt(clientSel,"","Seleccione Cliente");
+          
+          const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("name")));
+          allClients = snap.docs.map(d => ({id:d.id, ...d.data()}));
+          
+          const uniqueNames = [...new Set(allClients.map(c => c.name))];
+          uniqueNames.forEach(name => {
+            opt(clientSel, name, name); 
+          });
+        }
 
-    async function renderProjects(){
-      list.innerHTML="";
-      const snap = await fb.getDocs(fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc")));
-      const projects = snap.docs.map(d=>({id:d.id, ...d.data()}));
-      if(!projects.length){
-        list.innerHTML = `<p class="sub">Aún no hay proyectos.</p>`;
-        return;
-      }
-      projects.forEach(p=>{
-        const item=document.createElement("div");
-        item.className="item";
-        item.innerHTML=`
-          <div class="item__head">
-            <span>${p.clientName || "Cliente"} · ${p.code || ""}</span>
-            <span>$${Number(p.baseAmount||0).toLocaleString()}</span>
-          </div>
-          <div class="item__meta">${p.name||""} · ${p.city||""}</div>
-          <div class="item__meta">Responsable: ${p.responsibleName||""}</div>
-          <div class="item__meta">
-            Estado:
-            <select data-id="${p.id}" class="status">
-              <option value="activo" ${ (p.status||"activo")==="activo" ? "selected":"" }>Activo</option>
-              <option value="inactivo" ${ (p.status||"activo")==="inactivo" ? "selected":"" }>Inactivo</option>
-            </select>
-          </div>
-        `;
-        list.append(item);
-      });
-    }
+        // B. Cargar Responsables
+        async function loadResponsibles(){
+          respSel.innerHTML="";
+          opt(respSel,"","Seleccione");
+          const snap = await fb.getDocs(fb.collection(db,"users"));
+          const users = snap.docs.map(d=>({id:d.id, ...d.data()}));
+          
+          const allowed = users.filter(u => u.role === "empleado" || u.role === "lider");
+          allowed.sort((a,b) => (a.name||"").localeCompare(b.name||""));
+          
+          allowed.forEach(u => {
+            opt(respSel, u.id, `${u.name} (${u.role.toUpperCase()})`);
+          });
+        }
 
-    list.addEventListener("change", async (e)=>{
-      const sel=e.target;
-      if(!(sel instanceof HTMLSelectElement)) return;
-      if(!sel.classList.contains("status")) return;
-      try{
-        await fb.updateDoc(fb.doc(db,"projects", sel.dataset.id), { status: sel.value });
-      }catch(err){ console.error(err); }
-    });
+        // C. Cargar Proyectos
+        async function loadProjectsData(){
+          const snap = await fb.getDocs(fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc")));
+          allProjects = snap.docs.map(d=>({id:d.id, ...d.data()}));
+          renderProjectsList();
+        }
 
-    form.addEventListener("submit", async (e)=>{
-      e.preventDefault();
-      try{
-        setNotice(msg,"Guardando...","loading");
-        const clientId = clientSel.value;
-        const clientDoc = await fb.getDoc(fb.doc(db,"clients", clientId));
-        const client = clientDoc.data();
-        const respId = respSel.value;
-        const respDoc = await fb.getDoc(fb.doc(db,"users", respId));
-        const resp = respDoc.data();
+        function renderProjectsList(){
+          list.innerHTML="";
+          if(!allProjects.length){
+            list.innerHTML = `<p class="sub">Aún no hay proyectos.</p>`;
+            return;
+          }
+          allProjects.forEach(p=>{
+            const item=document.createElement("div");
+            item.className="item";
+            item.innerHTML=`
+              <div class="item__head">
+                <span>${p.code}</span>
+                <span>$${Number(p.baseAmount||0).toLocaleString()}</span>
+              </div>
+              <div class="item__meta">${p.clientName} - ${p.city}</div>
+              <div class="item__meta">Resp: ${p.responsibleName||""}</div>
+              <div class="item__meta">
+                Estado:
+                <select data-id="${p.id}" class="status">
+                  <option value="activo" ${ (p.status||"activo")==="activo" ? "selected":"" }>Activo</option>
+                  <option value="inactivo" ${ (p.status||"activo")==="inactivo" ? "selected":"" }>Inactivo</option>
+                </select>
+              </div>
+            `;
+            list.append(item);
+          });
+        }
 
-        const payload = {
-          clientId,
-          clientName: client?.name || "",
-          code: document.querySelector("#p-code").value.trim(),
-          name: document.querySelector("#p-name").value.trim(),
-          city: document.querySelector("#p-city").value.trim(),
-          responsibleUid: respId,
-          responsibleName: resp?.name || resp?.email || "",
-          baseAmount: Number(document.querySelector("#p-base").value),
-          status: "activo",
-          notes: document.querySelector("#p-notes").value.trim(),
-          createdAt: fb.serverTimestamp(),
-        };
-        await fb.addDoc(fb.collection(db,"projects"), payload);
-        form.reset();
-        setNotice(msg,"Proyecto creado.","success");
-        await renderProjects();
-      }catch(err){
-        console.error(err);
-        setNotice(msg,"No se pudo guardar.","error");
-      }
-    });
+        // INTERACCIÓN: Cliente -> Ciudad
+        clientSel.addEventListener("change", ()=>{
+          const selectedName = clientSel.value;
+          citySel.innerHTML = "";
+          opt(citySel, "", "Seleccione Ciudad");
+          codeInput.value = ""; 
 
-    await loadClients();
-    await loadEmployees();
-    await renderProjects();
-  </script>
+          if(!selectedName){
+            citySel.disabled = true;
+            return;
+          }
+
+          const matches = allClients.filter(c => c.name === selectedName);
+          matches.forEach(m => opt(citySel, m.city, m.city));
+          citySel.disabled = false;
+        });
+
+        // INTERACCIÓN: Ciudad -> Código
+        citySel.addEventListener("change", generateCode);
+
+        function generateCode(){
+          const clientName = clientSel.value;
+          const cityName = citySel.value;
+
+          if(!clientName || !cityName){
+            codeInput.value = "";
+            return;
+          }
+
+          const abbrClient = clientName.substring(0,3).toUpperCase();
+          const abbrCity = cityName.substring(0,3).toUpperCase();
+          const prefix = `${abbrClient}-${abbrCity}`; 
+
+          const existing = allProjects.filter(p => p.code && p.code.startsWith(prefix));
+          let maxNum = 0;
+          existing.forEach(p => {
+            const parts = p.code.split("-");
+            const numPart = parseInt(parts[parts.length-1]); 
+            if(!isNaN(numPart) && numPart > maxNum) maxNum = numPart;
+          });
+
+          const nextNum = maxNum + 1;
+          const consecutive = String(nextNum).padStart(4, "0"); 
+          codeInput.value = `${prefix}-${consecutive}`;
+        }
+
+        // GUARDAR
+        form.addEventListener("submit", async (e)=>{
+          e.preventDefault();
+          try{
+            setNotice(msg,"Guardando...","loading");
+            
+            const clientName = clientSel.value;
+            const cityName = citySel.value;
+            const clientDoc = allClients.find(c => c.name === clientName && c.city === cityName);
+            const clientId = clientDoc ? clientDoc.id : "unknown";
+
+            const respId = respSel.value;
+            const respText = respSel.options[respSel.selectedIndex].text; 
+            const respName = respText.split(" (")[0]; 
+
+            const payload = {
+              code: codeInput.value,
+              clientId, 
+              clientName,
+              city: cityName,
+              responsibleUid: respId,
+              responsibleName: respName,
+              baseAmount: Number(document.querySelector("#p-base").value),
+              status: "activo",
+              notes: document.querySelector("#p-notes").value.trim(),
+              createdAt: fb.serverTimestamp(),
+            };
+
+            await fb.addDoc(fb.collection(db,"projects"), payload);
+            form.reset();
+            citySel.disabled = true;
+            setNotice(msg,`Proyecto creado: ${payload.code}`,"success");
+            await loadProjectsData();
+
+          }catch(err){
+            console.error(err);
+            setNotice(msg,"No se pudo guardar.","error");
+          }
+        });
+
+        // Actualizar estado
+        list.addEventListener("change", async (e)=>{
+          const sel=e.target;
+          if(sel.classList.contains("status")){
+            try{
+              await fb.updateDoc(fb.doc(db,"projects", sel.dataset.id), { status: sel.value });
+            }catch(err){ console.error(err); }
+          }
+        });
+
+        // Init
+        await loadClients();
+        await loadResponsibles();
+        await loadProjectsData();
+      </script>
 
     </main>
   </div>
-
-  <script type="module">
-    import { requireAuth, setActiveNav, fillUserBadge, logout, qsa } from "./js/common.js";
-    const { profile, role } = await requireAuth();
-    fillUserBadge(profile);
-    setActiveNav();
-    document.querySelector("#logout-btn")?.addEventListener("click", logout);
-
-    // Ocultar links según rol
-    const manage = role === "admin" || role === "lider";
-    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
-    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
-  </script>
 </body>
 </html>

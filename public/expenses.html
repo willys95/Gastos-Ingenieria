@@ -10,6 +10,7 @@
 <body>
   <header class="topbar">
     <div class="brand">
+      <button id="menu-toggle" class="menu-toggle">☰</button>
       <img class="brand__logo" src="./assets/logo.png" alt="Logo"/>
       <div class="brand__title">Control de Proyectos</div>
     </div>
@@ -36,252 +37,246 @@
 
     <main class="main">
       
-  <div>
-    <h1 class="h1">Gastos</h1>
-    <p class="sub">Registra gastos por proyecto. Los empleados solo ven sus proyectos asignados.</p>
-  </div>
+      <div>
+        <h1 class="h1">Gastos</h1>
+        <p class="sub">Registra gastos por proyecto. Los empleados solo ven sus proyectos asignados.</p>
+      </div>
 
-  <div class="grid">
-    <div class="card">
-      <h3>Registrar gasto</h3>
-      <form class="form" id="e-form">
-        <label>Cliente
-          <select id="e-client" required></select>
-        </label>
-        <label>Proyecto
-          <select id="e-project" required></select>
-        </label>
-        <div class="row">
-          <label>Fecha
-            <input id="e-date" type="date" required/>
-          </label>
-          <label>Valor
-            <input id="e-amount" type="number" min="1" required/>
-          </label>
+      <div class="grid">
+        <div class="card">
+          <h3>Registrar gasto</h3>
+          <form class="form" id="e-form">
+            <label>Cliente
+              <select id="e-client" required></select>
+            </label>
+            <label>Proyecto
+              <select id="e-project" required></select>
+            </label>
+            <div class="row">
+              <label>Fecha
+                <input id="e-date" type="date" required/>
+              </label>
+              <label>Valor
+                <input id="e-amount" type="number" min="1" required/>
+              </label>
+            </div>
+            <label>Concepto
+              <select id="e-category" required></select>
+            </label>
+            <label>Descripción
+              <textarea id="e-desc" rows="3" required></textarea>
+            </label>
+            <label>Soporte (foto)
+              <input id="e-file" type="file" accept="image/*" required/>
+            </label>
+            <div class="file-preview" id="e-preview">
+              <span class="file-preview__label">Sin archivo</span>
+            </div>
+            <button class="button" type="submit">Guardar</button>
+            <p class="notice" id="e-msg"></p>
+          </form>
+          <p class="sub" style="margin-top:10px;font-size:12px;">El archivo se guarda en Firebase Storage.</p>
         </div>
-        <label>Concepto
-          <select id="e-category" required></select>
-        </label>
-        <label>Descripción
-          <textarea id="e-desc" rows="3" required></textarea>
-        </label>
-        <label>Soporte (foto)
-          <input id="e-file" type="file" accept="image/*" required/>
-        </label>
-        <div class="file-preview" id="e-preview">
-          <span class="file-preview__label">Sin archivo</span>
+
+        <div class="card">
+          <h3>Historial</h3>
+          <p>Últimos registros visibles para tu rol.</p>
+          <div class="list" id="e-list"></div>
         </div>
-        <button class="button" type="submit">Guardar</button>
-        <p class="notice" id="e-msg"></p>
-      </form>
-      <p class="sub" style="margin-top:10px;font-size:12px;">El archivo se guarda en Firebase Storage.</p>
-    </div>
+      </div>
 
-    <div class="card">
-      <h3>Historial</h3>
-      <p>Últimos registros visibles para tu rol.</p>
-      <div class="list" id="e-list"></div>
-    </div>
-  </div>
+      <script type="module">
+        import { db, storage, fb } from "./js/firebase.js";
+        // Importamos 'logout' aquí
+        import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa, logout } from "./js/common.js";
 
-  <script type="module">
-    import { db, storage, fb } from "./js/firebase.js";
-    import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa } from "./js/common.js";
+        // 1. Autenticación y UI Básica
+        const { user, profile, role } = await requireAuth();
+        fillUserBadge(profile);
+        setActiveNav();
+        
+        // 2. Configurar Botón Salir
+        document.querySelector("#logout-btn")?.addEventListener("click", logout);
 
-    const { user, profile, role } = await requireAuth();
-    fillUserBadge(profile);
-    setActiveNav();
+        // 3. Manejo de Roles
+        const manage = role === "admin" || role === "lider";
+        qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
+        qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
 
-    const manage = role === "admin" || role === "lider";
-    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
-    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
+        // 4. Lógica de Gastos
+        const form = document.querySelector("#e-form");
+        const msg = document.querySelector("#e-msg");
+        const list = document.querySelector("#e-list");
+        const clientSel = document.querySelector("#e-client");
+        const projectSel = document.querySelector("#e-project");
+        const catSel = document.querySelector("#e-category");
+        const fileInput = document.querySelector("#e-file");
+        const preview = document.querySelector("#e-preview");
 
-    const form = document.querySelector("#e-form");
-    const msg = document.querySelector("#e-msg");
-    const list = document.querySelector("#e-list");
-    const clientSel = document.querySelector("#e-client");
-    const projectSel = document.querySelector("#e-project");
-    const catSel = document.querySelector("#e-category");
-    const fileInput = document.querySelector("#e-file");
-    const preview = document.querySelector("#e-preview");
+        const DEFAULT_CATEGORIES = [
+          "Transporte","Alimentación","Hospedaje","Compra de materiales",
+          "Pago a terceros","Impuestos","Servicios","Viáticos","Nómina","Otros"
+        ];
 
-    const DEFAULT_CATEGORIES = [
-      "Transporte","Alimentación","Hospedaje","Compra de materiales",
-      "Pago a terceros","Impuestos","Servicios","Viáticos","Nómina","Otros"
-    ];
+        function opt(sel,value,label){
+          const o=document.createElement("option"); o.value=value; o.textContent=label; sel.append(o);
+        }
+        function money(n){return `$${Number(n||0).toLocaleString()}`;}
 
-    function opt(sel,value,label){
-      const o=document.createElement("option"); o.value=value; o.textContent=label; sel.append(o);
-    }
-    function money(n){return `$${Number(n||0).toLocaleString()}`;}
+        function setPreview(file){
+          preview.innerHTML="";
+          if(!file){ preview.innerHTML='<span class="file-preview__label">Sin archivo</span>'; return; }
+          const img=document.createElement("img");
+          img.src = URL.createObjectURL(file);
+          const label=document.createElement("span");
+          label.className="file-preview__label";
+          label.textContent=file.name;
+          preview.append(img,label);
+        }
+        fileInput.addEventListener("change", ()=> setPreview(fileInput.files?.[0] || null));
 
-    function setPreview(file){
-      preview.innerHTML="";
-      if(!file){ preview.innerHTML='<span class="file-preview__label">Sin archivo</span>'; return; }
-      const img=document.createElement("img");
-      img.src = URL.createObjectURL(file);
-      const label=document.createElement("span");
-      label.className="file-preview__label";
-      label.textContent=file.name;
-      preview.append(img,label);
-    }
-    fileInput.addEventListener("change", ()=> setPreview(fileInput.files?.[0] || null));
+        let clients = [];
+        let projects = [];
 
-    let clients = [];
-    let projects = [];
-
-    async function loadVisibleProjects(){
-      if(manage){
-        const snap = await fb.getDocs(fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc")));
-        projects = snap.docs.map(d=>({id:d.id,...d.data()}));
-      }else{
-        const q = fb.query(fb.collection(db,"projects"), fb.where("responsibleUid","==", user.uid), fb.orderBy("createdAt","desc"));
-        const snap = await fb.getDocs(q);
-        projects = snap.docs.map(d=>({id:d.id,...d.data()}));
-      }
-    }
-
-    async function loadClients(){
-      const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("name")));
-      clients = snap.docs.map(d=>({id:d.id,...d.data()}));
-
-      // Para empleados, filtra clientes con proyectos visibles
-      if(!manage){
-        const clientIds = new Set(projects.map(p=>p.clientId));
-        clients = clients.filter(c=>clientIds.has(c.id));
-      }
-    }
-
-    function renderClientSelect(){
-      clientSel.innerHTML="";
-      opt(clientSel,"","Seleccione");
-      clients.forEach(c=>opt(clientSel,c.id, c.name));
-    }
-
-    function renderProjectSelect(){
-      projectSel.innerHTML="";
-      opt(projectSel,"","Seleccione");
-      const cid = clientSel.value;
-      const list = projects.filter(p=>p.clientId===cid);
-      list.forEach(p=>opt(projectSel,p.id, `${p.code} · ${p.name}`));
-    }
-
-    function renderCategories(){
-      catSel.innerHTML="";
-      opt(catSel,"","Seleccione");
-      DEFAULT_CATEGORIES.forEach(c=>opt(catSel,c,c));
-    }
-
-    clientSel.addEventListener("change", renderProjectSelect);
-
-    async function renderExpenses(){
-      list.innerHTML="";
-      const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(60));
-      const snap = await fb.getDocs(q);
-      let expenses = snap.docs.map(d=>({id:d.id,...d.data()}));
-
-      if(!manage){
-        const my = new Set(projects.map(p=>p.id));
-        expenses = expenses.filter(e=>my.has(e.projectId));
-      }
-
-      if(!expenses.length){
-        list.innerHTML = `<p class="sub">Aún no hay gastos.</p>`;
-        return;
-      }
-
-      expenses.slice(0,20).forEach(e=>{
-        const item=document.createElement("div");
-        item.className="item";
-        item.innerHTML=`
-          <div class="item__head">
-            <span>${e.category || "Gasto"}</span>
-            <span>${money(e.amount)}</span>
-          </div>
-          <div class="item__meta">${e.date || ""} · ${e.projectName || ""}</div>
-          <div class="item__meta">${e.description || ""}</div>
-          <div class="item__meta">Soporte: ${
-            e.receiptUrl ? `<a href="${e.receiptUrl}" target="_blank" rel="noreferrer">ver</a>` : "—"
-          }</div>
-        `;
-        list.append(item);
-      });
-    }
-
-    form.addEventListener("submit", async (e)=>{
-      e.preventDefault();
-      try{
-        setNotice(msg,"Guardando...","loading");
-        const cid = clientSel.value;
-        const pid = projectSel.value;
-        const client = clients.find(c=>c.id===cid);
-        const project = projects.find(p=>p.id===pid);
-        if(!project){ setNotice(msg,"Selecciona un proyecto.","error"); return; }
-        if(!manage && project.responsibleUid !== user.uid){
-          setNotice(msg,"No tienes permiso sobre este proyecto.","error"); return;
+        async function loadVisibleProjects(){
+          if(manage){
+            const snap = await fb.getDocs(fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc")));
+            projects = snap.docs.map(d=>({id:d.id,...d.data()}));
+          }else{
+            const q = fb.query(fb.collection(db,"projects"), fb.where("responsibleUid","==", user.uid), fb.orderBy("createdAt","desc"));
+            const snap = await fb.getDocs(q);
+            projects = snap.docs.map(d=>({id:d.id,...d.data()}));
+          }
         }
 
-        const file = fileInput.files?.[0];
-        if(!file){ setNotice(msg,"Adjunta el soporte (foto).","error"); return; }
+        async function loadClients(){
+          const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("name")));
+          clients = snap.docs.map(d=>({id:d.id,...d.data()}));
 
-        // Upload to Storage
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-        const path = `receipts/${pid}/${Date.now()}_${safeName}`;
-        const storageRef = fb.ref(storage, path);
-        await fb.uploadBytes(storageRef, file);
-        const url = await fb.getDownloadURL(storageRef);
+          // Para empleados, filtra clientes con proyectos visibles
+          if(!manage){
+            const clientIds = new Set(projects.map(p=>p.clientId));
+            clients = clients.filter(c=>clientIds.has(c.id));
+          }
+        }
 
-        const payload = {
-          clientId: cid,
-          clientName: client?.name || "",
-          projectId: pid,
-          projectName: `${project.code} · ${project.name}`,
-          date: document.querySelector("#e-date").value,
-          amount: Number(document.querySelector("#e-amount").value),
-          category: catSel.value,
-          description: document.querySelector("#e-desc").value.trim(),
-          receiptUrl: url,
-          receiptName: file.name,
-          createdByUid: user.uid,
-          createdByName: profile.name || profile.email || "",
-          createdAt: fb.serverTimestamp(),
-        };
+        function renderClientSelect(){
+          clientSel.innerHTML="";
+          opt(clientSel,"","Seleccione");
+          clients.forEach(c=>opt(clientSel,c.id, c.name));
+        }
 
-        await fb.addDoc(fb.collection(db,"expenses"), payload);
+        function renderProjectSelect(){
+          projectSel.innerHTML="";
+          opt(projectSel,"","Seleccione");
+          const cid = clientSel.value;
+          const list = projects.filter(p=>p.clientId===cid);
+          list.forEach(p=>opt(projectSel,p.id, `${p.code} · ${p.name}`));
+        }
 
-        form.reset();
-        setPreview(null);
-        setNotice(msg,"Gasto guardado.","success");
+        function renderCategories(){
+          catSel.innerHTML="";
+          opt(catSel,"","Seleccione");
+          DEFAULT_CATEGORIES.forEach(c=>opt(catSel,c,c));
+        }
+
+        clientSel.addEventListener("change", renderProjectSelect);
+
+        async function renderExpenses(){
+          list.innerHTML="";
+          const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(60));
+          const snap = await fb.getDocs(q);
+          let expenses = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+          if(!manage){
+            const my = new Set(projects.map(p=>p.id));
+            expenses = expenses.filter(e=>my.has(e.projectId));
+          }
+
+          if(!expenses.length){
+            list.innerHTML = `<p class="sub">Aún no hay gastos.</p>`;
+            return;
+          }
+
+          expenses.slice(0,20).forEach(e=>{
+            const item=document.createElement("div");
+            item.className="item";
+            item.innerHTML=`
+              <div class="item__head">
+                <span>${e.category || "Gasto"}</span>
+                <span>${money(e.amount)}</span>
+              </div>
+              <div class="item__meta">${e.date || ""} · ${e.projectName || ""}</div>
+              <div class="item__meta">${e.description || ""}</div>
+              <div class="item__meta">Soporte: ${
+                e.receiptUrl ? `<a href="${e.receiptUrl}" target="_blank" rel="noreferrer">ver</a>` : "—"
+              }</div>
+            `;
+            list.append(item);
+          });
+        }
+
+        form.addEventListener("submit", async (e)=>{
+          e.preventDefault();
+          try{
+            setNotice(msg,"Guardando...","loading");
+            const cid = clientSel.value;
+            const pid = projectSel.value;
+            const client = clients.find(c=>c.id===cid);
+            const project = projects.find(p=>p.id===pid);
+            if(!project){ setNotice(msg,"Selecciona un proyecto.","error"); return; }
+            if(!manage && project.responsibleUid !== user.uid){
+              setNotice(msg,"No tienes permiso sobre este proyecto.","error"); return;
+            }
+
+            const file = fileInput.files?.[0];
+            if(!file){ setNotice(msg,"Adjunta el soporte (foto).","error"); return; }
+
+            // Upload to Storage
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+            const path = `receipts/${pid}/${Date.now()}_${safeName}`;
+            const storageRef = fb.ref(storage, path);
+            await fb.uploadBytes(storageRef, file);
+            const url = await fb.getDownloadURL(storageRef);
+
+            const payload = {
+              clientId: cid,
+              clientName: client?.name || "",
+              projectId: pid,
+              projectName: `${project.code} · ${project.name}`,
+              date: document.querySelector("#e-date").value,
+              amount: Number(document.querySelector("#e-amount").value),
+              category: catSel.value,
+              description: document.querySelector("#e-desc").value.trim(),
+              receiptUrl: url,
+              receiptName: file.name,
+              createdByUid: user.uid,
+              createdByName: profile.name || profile.email || "",
+              createdAt: fb.serverTimestamp(),
+            };
+
+            await fb.addDoc(fb.collection(db,"expenses"), payload);
+
+            form.reset();
+            setPreview(null);
+            setNotice(msg,"Gasto guardado.","success");
+            await renderExpenses();
+          }catch(err){
+            console.error(err);
+            setNotice(msg,"No se pudo guardar.","error");
+          }
+        });
+
+        // Init
+        renderCategories();
+        await loadVisibleProjects();
+        await loadClients();
+        renderClientSelect();
+        renderProjectSelect();
         await renderExpenses();
-      }catch(err){
-        console.error(err);
-        setNotice(msg,"No se pudo guardar.","error");
-      }
-    });
-
-    // Init
-    renderCategories();
-    await loadVisibleProjects();
-    await loadClients();
-    renderClientSelect();
-    renderProjectSelect();
-    await renderExpenses();
-  </script>
+      </script>
 
     </main>
   </div>
-
-  <script type="module">
-    import { requireAuth, setActiveNav, fillUserBadge, logout, qsa } from "./js/common.js";
-    const { profile, role } = await requireAuth();
-    fillUserBadge(profile);
-    setActiveNav();
-    document.querySelector("#logout-btn")?.addEventListener("click", logout);
-
-    // Ocultar links según rol
-    const manage = role === "admin" || role === "lider";
-    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
-    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
-  </script>
 </body>
 </html>

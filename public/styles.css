@@ -84,3 +84,48 @@ textarea{resize:vertical}
   .layout{grid-template-columns:1fr}
   .sidebar{position:sticky;top:0}
 }
+
+/* ... (Tu código CSS anterior) ... */
+
+/* Botón de menú (Hamburguesa) - Oculto en PC por defecto */
+.menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #fff;
+  margin-right: 1rem;
+}
+
+/* Solo para móviles (pantallas menores a 768px) */
+@media (max-width: 768px) {
+  /* Mostrar botón de menú */
+  .menu-toggle {
+    display: block;
+  }
+
+  /* La barra lateral se esconde a la izquierda */
+  .sidebar {
+    position: fixed;
+    top: 60px; /* Altura del topbar */
+    bottom: 0;
+    left: 0;
+    width: 250px;
+    transform: translateX(-100%); /* Escondido */
+    transition: transform 0.3s ease;
+    z-index: 1000;
+  }
+
+  /* Clase para mostrar la barra cuando se activa */
+  .sidebar.is-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 10px rgba(0,0,0,0.2);
+  }
+
+  /* El contenido principal ocupa todo el ancho en móvil */
+  .main {
+    margin-left: 0;
+    padding: 1rem;
+  }
+}

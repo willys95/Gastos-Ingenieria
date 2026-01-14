@@ -10,6 +10,7 @@
 <body>
   <header class="topbar">
     <div class="brand">
+      <button id="menu-toggle" class="menu-toggle">☰</button> 
       <img class="brand__logo" src="./assets/logo.png" alt="Logo"/>
       <div class="brand__title">Control de Proyectos</div>
     </div>
@@ -36,154 +37,150 @@
 
     <main class="main">
       
-  <div>
-    <h1 class="h1">Panel</h1>
-    <p class="sub">Resumen rápido de clientes, proyectos y saldo disponible.</p>
-  </div>
+      <div>
+        <h1 class="h1">Panel</h1>
+        <p class="sub">Resumen rápido de clientes, proyectos y saldo disponible.</p>
+      </div>
 
-  <div class="grid">
-    <div class="card"><p class="sub">Clientes</p><h3 id="kpi-clients" style="margin:8px 0 0;font-size:26px;">0</h3></div>
-    <div class="card"><p class="sub">Proyectos</p><h3 id="kpi-projects" style="margin:8px 0 0;font-size:26px;">0</h3></div>
-    <div class="card"><p class="sub">Base total</p><h3 id="kpi-base" style="margin:8px 0 0;font-size:26px;">$0</h3></div>
-    <div class="card"><p class="sub">Saldo disponible</p><h3 id="kpi-remaining" style="margin:8px 0 0;font-size:26px;">$0</h3></div>
-  </div>
+      <div class="grid">
+        <div class="card"><p class="sub">Clientes</p><h3 id="kpi-clients" style="margin:8px 0 0;font-size:26px;">0</h3></div>
+        <div class="card"><p class="sub">Proyectos</p><h3 id="kpi-projects" style="margin:8px 0 0;font-size:26px;">0</h3></div>
+        <div class="card"><p class="sub">Base total</p><h3 id="kpi-base" style="margin:8px 0 0;font-size:26px;">$0</h3></div>
+        <div class="card"><p class="sub">Saldo disponible</p><h3 id="kpi-remaining" style="margin:8px 0 0;font-size:26px;">$0</h3></div>
+      </div>
 
-  <div class="grid">
-    <div class="card">
-      <h3>Cajas por proyecto</h3>
-      <p>Solo verás los proyectos asignados si eres empleado.</p>
-      <div class="list" id="balances"></div>
-    </div>
-    <div class="card">
-      <h3>Últimos gastos</h3>
-      <p>Últimos 8 registros visibles para tu rol.</p>
-      <div class="list" id="recent-expenses"></div>
-    </div>
-  </div>
+      <div class="grid">
+        <div class="card">
+          <h3>Cajas por proyecto</h3>
+          <p>Solo verás los proyectos asignados si eres empleado.</p>
+          <div class="list" id="balances"></div>
+        </div>
+        <div class="card">
+          <h3>Últimos gastos</h3>
+          <p>Últimos 8 registros visibles para tu rol.</p>
+          <div class="list" id="recent-expenses"></div>
+        </div>
+      </div>
 
-  <script type="module">
-    import { db, fb } from "./js/firebase.js";
-    import { requireAuth, fillUserBadge, setActiveNav, qsa } from "./js/common.js";
+      <script type="module">
+        import { db, fb } from "./js/firebase.js";
+        // Agregamos 'logout' a los imports
+        import { requireAuth, fillUserBadge, setActiveNav, qsa, logout } from "./js/common.js";
 
-    const { user, profile, role } = await requireAuth();
-    fillUserBadge(profile);
-    setActiveNav();
+        // 1. Autenticación y UI Básica
+        const { user, profile, role } = await requireAuth();
+        fillUserBadge(profile);
+        setActiveNav();
+        
+        // 2. Configurar Botón Salir
+        document.querySelector("#logout-btn")?.addEventListener("click", logout);
 
-    const manage = role === "admin" || role === "lider";
-    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
-    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
+        // 3. Manejo de Roles
+        const manage = role === "admin" || role === "lider";
+        qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
+        qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
 
-    function money(n){return `$${Number(n||0).toLocaleString()}`;}
+        function money(n){return `$${Number(n||0).toLocaleString()}`;}
 
-    async function load(){
-      // Clients
-      const clientsSnap = await fb.getDocs(fb.collection(db,"clients"));
-      const clients = clientsSnap.docs.map(d => ({id:d.id, ...d.data()}));
+        // 4. Lógica de Carga de Datos (KPIs y Listas)
+        async function load(){
+          // Clients
+          const clientsSnap = await fb.getDocs(fb.collection(db,"clients"));
+          const clients = clientsSnap.docs.map(d => ({id:d.id, ...d.data()}));
 
-      // Projects visible
-      let projects = [];
-      if(manage){
-        const projSnap = await fb.getDocs(fb.collection(db,"projects"));
-        projects = projSnap.docs.map(d => ({id:d.id, ...d.data()}));
-      }else{
-        const q = fb.query(fb.collection(db,"projects"), fb.where("responsibleUid","==", user.uid));
-        const projSnap = await fb.getDocs(q);
-        projects = projSnap.docs.map(d => ({id:d.id, ...d.data()}));
-      }
+          // Projects visible
+          let projects = [];
+          if(manage){
+            const projSnap = await fb.getDocs(fb.collection(db,"projects"));
+            projects = projSnap.docs.map(d => ({id:d.id, ...d.data()}));
+          }else{
+            const q = fb.query(fb.collection(db,"projects"), fb.where("responsibleUid","==", user.uid));
+            const projSnap = await fb.getDocs(q);
+            projects = projSnap.docs.map(d => ({id:d.id, ...d.data()}));
+          }
 
-      // Expenses visible (admins/leaders all; employees only their projects)
-      let expenses = [];
-      if(manage){
-        const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(50));
-        const expSnap = await fb.getDocs(q);
-        expenses = expSnap.docs.map(d => ({id:d.id, ...d.data()}));
-      }else{
-        // traer últimos 50 del usuario y filtrar
-        const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(80));
-        const expSnap = await fb.getDocs(q);
-        const all = expSnap.docs.map(d => ({id:d.id, ...d.data()}));
-        const myIds = new Set(projects.map(p => p.id));
-        expenses = all.filter(e => myIds.has(e.projectId));
-      }
+          // Expenses visible
+          let expenses = [];
+          if(manage){
+            const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(50));
+            const expSnap = await fb.getDocs(q);
+            expenses = expSnap.docs.map(d => ({id:d.id, ...d.data()}));
+          }else{
+            const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(80));
+            const expSnap = await fb.getDocs(q);
+            const all = expSnap.docs.map(d => ({id:d.id, ...d.data()}));
+            const myIds = new Set(projects.map(p => p.id));
+            expenses = all.filter(e => myIds.has(e.projectId));
+          }
 
-      const totalBase = projects.reduce((s,p)=>s+Number(p.baseAmount||0),0);
-      const spentByProject = new Map();
-      expenses.forEach(e => {
-        spentByProject.set(e.projectId, (spentByProject.get(e.projectId)||0) + Number(e.amount||0));
-      });
-
-      const balancesEl = document.querySelector("#balances");
-      balancesEl.innerHTML = "";
-      if(!projects.length){
-        balancesEl.innerHTML = `<p class="sub">Aún no hay proyectos para mostrar.</p>`;
-      }else{
-        projects
-          .sort((a,b)=>String(a.clientName||"").localeCompare(String(b.clientName||"")))
-          .forEach(p=>{
-            const spent = spentByProject.get(p.id)||0;
-            const remaining = Number(p.baseAmount||0) - spent;
-            const status = (p.status||"activo") === "inactivo" || remaining<=0 ? "Inactivo" : "Activo";
-            const item = document.createElement("div");
-            item.className="item";
-            item.innerHTML = `
-              <div class="item__head">
-                <span>${p.clientName||"Cliente"} · ${p.code||""}</span>
-                <span>${money(remaining)}</span>
-              </div>
-              <div class="item__meta">${p.name||""} · ${p.city||""}</div>
-              <div class="item__meta">Responsable: ${p.responsibleName||""} · Estado: ${status}</div>
-            `;
-            balancesEl.append(item);
+          const totalBase = projects.reduce((s,p)=>s+Number(p.baseAmount||0),0);
+          const spentByProject = new Map();
+          expenses.forEach(e => {
+            spentByProject.set(e.projectId, (spentByProject.get(e.projectId)||0) + Number(e.amount||0));
           });
-      }
 
-      const recentEl = document.querySelector("#recent-expenses");
-      recentEl.innerHTML = "";
-      if(!expenses.length){
-        recentEl.innerHTML = `<p class="sub">Aún no hay gastos.</p>`;
-      }else{
-        expenses.slice(0,8).forEach(e=>{
-          const item=document.createElement("div");
-          item.className="item";
-          item.innerHTML=`
-            <div class="item__head">
-              <span>${e.category||"Gasto"}</span>
-              <span>${money(e.amount)}</span>
-            </div>
-            <div class="item__meta">${e.date||""} · ${e.projectName||""}</div>
-            <div class="item__meta">${e.clientName||""}</div>
-          `;
-          recentEl.append(item);
-        });
-      }
+          // Render Balances
+          const balancesEl = document.querySelector("#balances");
+          balancesEl.innerHTML = "";
+          if(!projects.length){
+            balancesEl.innerHTML = `<p class="sub">Aún no hay proyectos para mostrar.</p>`;
+          }else{
+            projects
+              .sort((a,b)=>String(a.clientName||"").localeCompare(String(b.clientName||"")))
+              .forEach(p=>{
+                const spent = spentByProject.get(p.id)||0;
+                const remaining = Number(p.baseAmount||0) - spent;
+                const status = (p.status||"activo") === "inactivo" || remaining<=0 ? "Inactivo" : "Activo";
+                const item = document.createElement("div");
+                item.className="item";
+                item.innerHTML = `
+                  <div class="item__head">
+                    <span>${p.clientName||"Cliente"} · ${p.code||""}</span>
+                    <span>${money(remaining)}</span>
+                  </div>
+                  <div class="item__meta">${p.name||""} · ${p.city||""}</div>
+                  <div class="item__meta">Responsable: ${p.responsibleName||""} · Estado: ${status}</div>
+                `;
+                balancesEl.append(item);
+              });
+          }
 
-      document.querySelector("#kpi-clients").textContent = manage ? clients.length : new Set(projects.map(p=>p.clientId)).size;
-      document.querySelector("#kpi-projects").textContent = projects.length;
-      document.querySelector("#kpi-base").textContent = money(totalBase);
-      const totalRemaining = projects.reduce((s,p)=>{
-        const spent = spentByProject.get(p.id)||0;
-        return s + (Number(p.baseAmount||0)-spent);
-      },0);
-      document.querySelector("#kpi-remaining").textContent = money(totalRemaining);
-    }
+          // Render Recent Expenses
+          const recentEl = document.querySelector("#recent-expenses");
+          recentEl.innerHTML = "";
+          if(!expenses.length){
+            recentEl.innerHTML = `<p class="sub">Aún no hay gastos.</p>`;
+          }else{
+            expenses.slice(0,8).forEach(e=>{
+              const item=document.createElement("div");
+              item.className="item";
+              item.innerHTML=`
+                <div class="item__head">
+                  <span>${e.category||"Gasto"}</span>
+                  <span>${money(e.amount)}</span>
+                </div>
+                <div class="item__meta">${e.date||""} · ${e.projectName||""}</div>
+                <div class="item__meta">${e.clientName||""}</div>
+              `;
+              recentEl.append(item);
+            });
+          }
 
-    await load();
-  </script>
+          // KPIs
+          document.querySelector("#kpi-clients").textContent = manage ? clients.length : new Set(projects.map(p=>p.clientId)).size;
+          document.querySelector("#kpi-projects").textContent = projects.length;
+          document.querySelector("#kpi-base").textContent = money(totalBase);
+          const totalRemaining = projects.reduce((s,p)=>{
+            const spent = spentByProject.get(p.id)||0;
+            return s + (Number(p.baseAmount||0)-spent);
+          },0);
+          document.querySelector("#kpi-remaining").textContent = money(totalRemaining);
+        }
+
+        await load();
+      </script>
 
     </main>
   </div>
-
-  <script type="module">
-    import { requireAuth, setActiveNav, fillUserBadge, logout, qsa } from "./js/common.js";
-    const { profile, role } = await requireAuth();
-    fillUserBadge(profile);
-    setActiveNav();
-    document.querySelector("#logout-btn")?.addEventListener("click", logout);
-
-    // Ocultar links según rol
-    const manage = role === "admin" || role === "lider";
-    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
-    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
-  </script>
 </body>
 </html>
