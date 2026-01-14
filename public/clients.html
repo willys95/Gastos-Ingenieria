@@ -39,7 +39,7 @@
       
       <div>
         <h1 class="h1">Clientes</h1>
-        <p class="sub">Registra clientes. Solo admin/líder pueden crear y ver esta sección.</p>
+        <p class="sub">Registra clientes. No se permiten duplicados de Nombre + Ciudad.</p>
       </div>
 
       <div class="grid">
@@ -47,10 +47,10 @@
           <h3>Crear cliente</h3>
           <form class="form" id="client-form">
             <label>Nombre
-              <input id="c-name" required/>
+              <input id="c-name" required placeholder="Ej: Davivienda"/>
             </label>
             <label>Ciudad principal
-              <input id="c-city" required/>
+              <input id="c-city" required placeholder="Ej: Cartagena"/>
             </label>
             <label>Contacto (opcional)
               <input id="c-contact" placeholder="Nombre o correo"/>
@@ -69,37 +69,35 @@
 
       <script type="module">
         import { db, fb } from "./js/firebase.js";
-        // Importamos 'logout' aquí directamente
         import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa, logout } from "./js/common.js";
 
-        // 1. Autenticación y Configuración Inicial
+        // 1. Autenticación
         const { profile, role } = await requireAuth({ allowedRoles:["admin","lider"] });
         fillUserBadge(profile);
         setActiveNav();
-
-        // 2. Configurar Botón Salir
         document.querySelector("#logout-btn")?.addEventListener("click", logout);
 
-        // 3. Manejo de Roles en UI
-        // Como ya pasó el requireAuth, sabemos que es admin o lider, mostramos gestión
         qsa('[data-role="manageProjects"]').forEach(a => a.classList.remove("hidden"));
-        // El link de usuarios solo si es admin
         qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
 
-        // 4. Lógica de Clientes
+        // 2. Lógica
         const form = document.querySelector("#client-form");
         const msg = document.querySelector("#c-msg");
         const list = document.querySelector("#client-list");
 
+        // Variable para guardar la lista actual y validar duplicados
+        let loadedClients = [];
+
         async function render(){
           const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("createdAt","desc")));
-          const clients = snap.docs.map(d=>({id:d.id,...d.data()}));
+          loadedClients = snap.docs.map(d=>({id:d.id,...d.data()}));
+          
           list.innerHTML = "";
-          if(!clients.length){
+          if(!loadedClients.length){
             list.innerHTML = `<p class="sub">Aún no hay clientes.</p>`;
             return;
           }
-          clients.forEach(c=>{
+          loadedClients.forEach(c=>{
             const item=document.createElement("div");
             item.className="item";
             item.innerHTML = `
@@ -113,17 +111,36 @@
         form.addEventListener("submit", async (e)=>{
           e.preventDefault();
           try{
+            const nameInput = document.querySelector("#c-name").value.trim();
+            const cityInput = document.querySelector("#c-city").value.trim();
+            const contactInput = document.querySelector("#c-contact").value.trim();
+
+            // --- VALIDACIÓN DE DUPLICADOS ---
+            const exists = loadedClients.some(c => 
+              c.name.toLowerCase() === nameInput.toLowerCase() && 
+              c.city.toLowerCase() === cityInput.toLowerCase()
+            );
+
+            if(exists){
+              setNotice(msg, `Ya existe "${nameInput}" en "${cityInput}".`, "error");
+              return; // Detiene el guardado
+            }
+            // -------------------------------
+
             setNotice(msg,"Guardando...","loading");
             const payload = {
-              name: document.querySelector("#c-name").value.trim(),
-              city: document.querySelector("#c-city").value.trim(),
-              contact: document.querySelector("#c-contact").value.trim(),
+              name: nameInput,
+              city: cityInput,
+              contact: contactInput,
               createdAt: fb.serverTimestamp(),
             };
+            
             await fb.addDoc(fb.collection(db,"clients"), payload);
+            
             form.reset();
-            setNotice(msg,"Cliente creado.","success");
-            await render();
+            setNotice(msg,"Cliente creado correctamente.","success");
+            await render(); // Recargar lista
+
           }catch(err){
             console.error(err);
             setNotice(msg,"No se pudo guardar.","error");
