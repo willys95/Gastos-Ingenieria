@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Reportes · Control de Proyectos</title>
+  <link rel="stylesheet" href="./styles.css"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <button id="menu-toggle" class="menu-toggle">☰</button> 
+      <img class="brand__logo" src="./assets/logo.png" alt="Logo"/>
+      <div class="brand__title">Control de Proyectos</div>
+    </div>
+    <div class="topbar__right">
+      <span class="badge" id="user-badge">...</span>
+      <button class="button button--ghost" id="logout-btn">Salir</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <nav class="nav">
+        <a href="./dashboard.html">Panel</a>
+        <a href="./clients.html" data-role="manageProjects">Clientes</a>
+        <a href="./projects.html" data-role="manageProjects">Proyectos</a>
+        <a href="./expenses.html">Gastos</a>
+        <a href="./reports.html" class="is-active">Reportes</a>
+        <a href="./users.html" data-role="adminOnly">Usuarios</a>
+      </nav>
+      <div class="sidebar__meta">
+         <div><b>Hosting:</b> Firebase</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <h1 class="h1">Reportes</h1>
+      <p class="sub">Genera reportes en Excel o PDF.</p>
+
+      <div class="card">
+        <h3>Configuración del Reporte</h3>
+        <form class="form" id="r-form">
+          <div class="row">
+             <label>Desde
+               <input type="date" id="r-start" required>
+             </label>
+             <label>Hasta
+               <input type="date" id="r-end" required>
+             </label>
+          </div>
+          <label>Tipo de Reporte
+            <select id="r-type">
+              <option value="expenses_all">Gastos (Todos)</option>
+              <option value="projects_active">Proyectos En Curso (Activos)</option>
+              <option value="projects_finished">Proyectos Terminados (Inactivos)</option>
+            </select>
+          </label>
+          <div class="row">
+            <button type="button" class="button" id="btn-excel">Descargar Excel</button>
+            <button type="button" class="button button--ghost" id="btn-pdf">Descargar PDF</button>
+          </div>
+          <p class="notice" id="r-msg"></p>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { db, fb } from "./js/firebase.js";
+    import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa, logout } from "./js/common.js";
+
+    const { profile, role } = await requireAuth(); // Todos pueden entrar, pero data limitada
+    fillUserBadge(profile);
+    setActiveNav();
+    document.querySelector("#logout-btn")?.addEventListener("click", logout);
+
+    const manage = role === "admin" || role === "lider";
+    qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
+    qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
+
+    const startIn = document.querySelector("#r-start");
+    const endIn = document.querySelector("#r-end");
+    const typeSel = document.querySelector("#r-type");
+    const msg = document.querySelector("#r-msg");
+
+    // Fecha por defecto: Mes actual
+    const now = new Date();
+    startIn.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    endIn.value = new Date().toISOString().split('T')[0];
+
+    async function getData(){
+        const start = startIn.value;
+        const end = endIn.value;
+        const type = typeSel.value;
+        
+        setNotice(msg, "Generando datos...", "loading");
+
+        let data = [];
+        
+        if(type.startsWith("projects")){
+             const status = type === "projects_active" ? "activo" : "inactivo";
+             // Traemos todos y filtramos (mejor query si son muchos, pero ok para mvp)
+             const snap = await fb.getDocs(fb.collection(db, "projects"));
+             data = snap.docs.map(d=>d.data()).filter(p => p.status === status);
+             
+             // Filtro de fecha (creacion)
+             data = data.filter(p => {
+                 // Convertir timestamp a YYYY-MM-DD
+                 const d = p.createdAt ? p.createdAt.toDate().toISOString().split('T')[0] : "";
+                 return d >= start && d <= end;
+             });
+
+        } else {
+             // Gastos
+             const q = fb.query(
+                 fb.collection(db,"expenses"), 
+                 fb.where("date", ">=", start), 
+                 fb.where("date", "<=", end)
+             );
+             const snap = await fb.getDocs(q);
+             data = snap.docs.map(d=>d.data());
+        }
+
+        if(data.length === 0){ setNotice(msg,"No hay datos en este rango.","error"); return null; }
+        setNotice(msg,"Listo.","success");
+        return data;
+    }
+
+    document.getElementById("btn-excel").addEventListener("click", async () => {
+        const data = await getData();
+        if(!data) return;
+        
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Reporte");
+        XLSX.writeFile(wb, `Reporte_${typeSel.value}.xlsx`);
+    });
+
+    document.getElementById("btn-pdf").addEventListener("click", async () => {
+        const data = await getData();
+        if(!data) return;
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        doc.text(`Reporte: ${typeSel.options[typeSel.selectedIndex].text}`, 14, 15);
+        doc.text(`Periodo: ${startIn.value} a ${endIn.value}`, 14, 22);
+
+        // Columnas dinámicas
+        let head = [], body = [];
+        if(typeSel.value.startsWith("projects")){
+             head = [['Código', 'Cliente', 'Responsable', 'Base', 'Gastado', 'Estado']];
+             body = data.map(p => [p.code, p.clientName, p.responsibleName, `$${p.baseAmount}`, `$${p.spent}`, p.status]);
+        } else {
+             head = [['Fecha', 'Categoría', 'Monto', 'Proyecto', 'Responsable']];
+             body = data.map(e => [e.date, e.category, `$${e.amount}`, e.projectName, e.createdByName]);
+        }
+
+        doc.autoTable({
+            head: head,
+            body: body,
+            startY: 30,
+        });
+
+        doc.save(`Reporte_${typeSel.value}.pdf`);
+    });
+
+  </script>
+</body>
+</html>

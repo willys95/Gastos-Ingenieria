@@ -1,13 +1,9 @@
 rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    function signedIn(){ return request.auth != null; }
-    function role(){ return signedIn() ? request.auth.token.role : null; }
-    function canManage(){ return role() == 'admin' || role() == 'lider'; }
-
-    match /receipts/{projectId}/{fileName} {
-      allow read: if signedIn();
-      allow write: if signedIn(); // si quieres limitar: canManage() || request.auth.uid != null
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      // Permitir todo a usuarios autenticados
+      allow read, write: if request.auth != null;
     }
   }
 }

@@ -57,7 +57,13 @@
         window.location.href = "./dashboard.html";
       }catch(err){
         console.error(err);
-        setNotice(msg,"Credenciales inválidas.","error");
+        if (err.code === "permission-denied") {
+          setNotice(msg, "No tienes permisos para validar el usuario. Revisa las rules.", "error");
+        } else if (err.code === "auth/invalid-login-credentials") {
+          setNotice(msg, "Credenciales inválidas.", "error");
+        } else {
+          setNotice(msg, "Error: " + (err.message || "desconocido"), "error");
+        }
       }
     });
 

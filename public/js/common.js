@@ -11,57 +11,74 @@ export function setNotice(el, message, variant){
 }
 
 export async function usernameToEmail(input){
+  const value = (input || "").trim().toLowerCase();
+
   // Si ya es correo, regresa igual
-  if(input.includes("@")) return input;
-  const key = input.trim().toLowerCase();
-  const snap = await fb.getDoc(fb.doc(db,"usernames",key));
-  if(!snap.exists() || !snap.data()?.email) return null;
-  return snap.data().email;
+  if(value.includes("@")) return value;
+
+  // Buscar en users por username
+  const q = fb.query(
+    fb.collection(db, "users"),
+    fb.where("username", "==", value),
+    fb.limit(1)
+  );
+
+  const snap = await fb.getDocs(q);
+  if (snap.empty) return null;
+
+  const data = snap.docs[0].data();
+  return data?.email || null;
 }
 
-export function requireAuth(options={}){
-  const { allowedRoles=null } = options;
+
+export function requireAuth(options = {}) {
+  const { allowedRoles = null } = options;
+
   return new Promise((resolve) => {
     fb.onAuthStateChanged(auth, async (user) => {
-      if(!user){
+      if (!user) {
         window.location.href = "./login.html";
         return;
       }
 
       // Leer perfil (users/{uid})
-      const ref = fb.doc(db,"users",user.uid);
+      const ref = fb.doc(db, "users", user.uid);
       const profileSnap = await fb.getDoc(ref);
       const profile = profileSnap.exists()
         ? profileSnap.data()
-        : { role:"empleado", name:user.email, email:user.email };
+        : { role: "empleado", name: user.email, email: user.email };
 
       const role = profile.role || "empleado";
 
-      if(allowedRoles && !allowedRoles.includes(role)){
+      if (allowedRoles && !allowedRoles.includes(role)) {
         window.location.href = "./dashboard.html";
         return;
       }
 
-  // LOGICA DEL MENU MOVIL
-        const toggleBtn = document.getElementById("menu-toggle");
-        const sidebar = document.querySelector(".sidebar");
-        if(toggleBtn && sidebar){
-          toggleBtn.addEventListener("click", () => {
-            sidebar.classList.toggle("is-open");
-          });
-          
-          // Cerrar menú al hacer click fuera (opcional)
-          document.addEventListener("click", (e) => {
-            if (!sidebar.contains(e.target) && !toggleBtn.contains(e.target) && sidebar.classList.contains("is-open")) {
-              sidebar.classList.remove("is-open");
-            }
-          });
-        }
+      // LOGICA DEL MENU MOVIL
+      const toggleBtn = document.getElementById("menu-toggle");
+      const sidebar = document.querySelector(".sidebar");
+      if (toggleBtn && sidebar) {
+        toggleBtn.addEventListener("click", () => {
+          sidebar.classList.toggle("is-open");
+        });
 
-        resolve({ user, profile, role });
-      });
+        // Cerrar menú al hacer click fuera (opcional)
+        document.addEventListener("click", (e) => {
+          if (
+            !sidebar.contains(e.target) &&
+            !toggleBtn.contains(e.target) &&
+            sidebar.classList.contains("is-open")
+          ) {
+            sidebar.classList.remove("is-open");
+          }
+        });
+      }
+
+      resolve({ user, profile, role });
     });
-  }
+  });
+}
 
 export function setActiveNav(){
   const path = window.location.pathname.split("/").pop();

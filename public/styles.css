@@ -129,3 +129,57 @@ textarea{resize:vertical}
     padding: 1rem;
   }
 }
+
+/* --- ESTILOS NUEVOS --- */
+
+/* Fondo rojo pálido para proyectos inactivos */
+.item.is-inactive {
+  background-color: #fef2f2; /* Rojo muy suave */
+  border-left: 4px solid #ef4444;
+}
+
+/* Modal (Ventana Flotante) */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.modal-overlay.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.modal {
+  background: white;
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal__header {
+  padding: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+}
+.modal__title { font-weight: 700; font-size: 1.1rem; }
+.modal__close {
+  background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #64748b;
+}
+.modal__body {
+  padding: 1rem;
+  overflow-y: auto;
+}
+.mini-list .item { padding: 0.5rem; font-size: 0.9rem; }

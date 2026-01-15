@@ -1,47 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function signedIn(){ return request.auth != null; }
-    function role(){ return signedIn() ? request.auth.token.role : null; }
-    function isAdmin(){ return role() == 'admin'; }
-    function isLeader(){ return role() == 'lider'; }
-    function canManage(){ return isAdmin() || isLeader(); }
-
-    match /users/{uid} {
-      allow read: if signedIn() && (isAdmin() || uid == request.auth.uid);
-      allow create: if signedIn() && isAdmin();
-      allow update: if signedIn() && (isAdmin() || uid == request.auth.uid);
-      allow delete: if signedIn() && isAdmin();
+    
+    // 1. ZONA PÚBLICA (La solución)
+    // Permitimos que CUALQUIERA (incluso sin loguearse) busque usuarios.
+    match /users/{userId} {
+      allow read, list: if true;
+      allow write: if request.auth != null;
     }
 
-    match /usernames/{username} {
-      allow read: if true; // necesario para login por username
-      allow write: if signedIn() && isAdmin();
-    }
-
-    match /clients/{id} {
-      allow read: if signedIn();
-      allow write: if signedIn() && canManage();
-    }
-
-    match /projects/{id} {
-      allow read: if signedIn() && (
-        canManage() || resource.data.responsibleUid == request.auth.uid
-      );
-      allow create, update, delete: if signedIn() && canManage();
-    }
-
-    match /expenses/{id} {
-      allow read: if signedIn() && (
-        canManage() || resource.data.createdByUid == request.auth.uid
-      );
-
-      allow create: if signedIn() && (
-        canManage() || request.resource.data.createdByUid == request.auth.uid
-      );
-
-      allow update, delete: if signedIn() && canManage();
+    // 2. ZONA PRIVADA (Seguridad)
+    // El resto (gastos, proyectos) sigue protegido.
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }

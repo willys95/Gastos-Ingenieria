@@ -27,6 +27,7 @@
         <a href="./clients.html" class="" data-role="manageProjects">Clientes</a>
         <a href="./projects.html" class="" data-role="manageProjects">Proyectos</a>
         <a href="./expenses.html" class="is-active">Gastos</a>
+        <a href="./reports.html" class="">Reportes</a>
         <a href="./users.html" class="" data-role="adminOnly">Usuarios</a>
       </nav>
       <div class="sidebar__meta">
@@ -39,22 +40,23 @@
       
       <div>
         <h1 class="h1">Gastos</h1>
-        <p class="sub">Registra gastos. Solo se muestran clientes con proyectos activos y saldo disponible.</p>
+        <p class="sub">Registra gastos. El saldo se descuenta automáticamente del proyecto.</p>
       </div>
 
       <div class="grid">
         <div class="card">
           <h3>Registrar gasto</h3>
           <form class="form" id="e-form">
-            <label>Cliente (Con saldo disponible)
+            <label>Cliente
               <select id="e-client" required></select>
             </label>
             <label>Proyecto
               <select id="e-project" required disabled><option>Seleccione cliente...</option></select>
             </label>
             
-            <div id="project-info" style="font-size: 0.9rem; color: #64748b; margin-bottom: 1rem; display:none;">
-              Saldo disponible: <b id="p-balance" style="color: #0f172a;">$0</b>
+            <div id="project-info" style="font-size:0.9rem; color:#64748b; margin-bottom:1rem; display:none; background:#f8fafc; padding:8px; border-radius:4px;">
+              Saldo: <b id="p-balance" style="color:#0f172a;">$0</b>
+              <br><small id="p-resp-label">Resp: ...</small>
             </div>
 
             <div class="row">
@@ -74,29 +76,24 @@
             <label>Soporte (foto)
               <input id="e-file" type="file" accept="image/*" required/>
             </label>
-            <div class="file-preview" id="e-preview">
-              <span class="file-preview__label">Sin archivo</span>
-            </div>
             <button class="button" type="submit">Guardar y Descontar</button>
             <p class="notice" id="e-msg"></p>
           </form>
-          <p class="sub" style="margin-top:10px;font-size:12px;">El archivo se comprime antes de subir para ahorrar datos.</p>
         </div>
 
         <div class="card">
-          <h3>Historial Reciente</h3>
-          <p>Últimos registros guardados.</p>
+          <h3 id="list-title">Historial Reciente</h3>
+          <p class="sub" id="list-subtitle">Cargando...</p>
           <div class="list" id="e-list"></div>
         </div>
       </div>
 
       <script type="module">
         import { db, storage, fb } from "./js/firebase.js";
-        // Importamos increment para la base de datos
         import { increment } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
         import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa, logout } from "./js/common.js";
 
-        // 1. Autenticación
+        // 1. Auth
         const { user, profile, role } = await requireAuth();
         fillUserBadge(profile);
         setActiveNav();
@@ -106,7 +103,7 @@
         qsa('[data-role="manageProjects"]').forEach(a => a.classList.toggle("hidden", !manage));
         qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
 
-        // 2. DOM Elements
+        // DOM
         const form = document.querySelector("#e-form");
         const msg = document.querySelector("#e-msg");
         const list = document.querySelector("#e-list");
@@ -114,98 +111,73 @@
         const projectSel = document.querySelector("#e-project");
         const catSel = document.querySelector("#e-category");
         const fileInput = document.querySelector("#e-file");
-        const preview = document.querySelector("#e-preview");
         const balanceInfo = document.querySelector("#project-info");
         const balanceDisplay = document.querySelector("#p-balance");
+        const respDisplay = document.querySelector("#p-resp-label");
+
+        // Configuración de vista
+        if(!manage){
+            document.getElementById("list-title").textContent = "Mis Gastos Recientes";
+            document.getElementById("list-subtitle").textContent = "Registros creados por ti.";
+        } else {
+            document.getElementById("list-subtitle").textContent = "Últimos registros globales.";
+        }
 
         const DEFAULT_CATEGORIES = [
           "Transporte","Alimentación","Hospedaje","Compra de materiales",
           "Pago a terceros","Impuestos","Servicios","Viáticos","Nómina","Otros"
         ];
 
-        // --- COMPRESIÓN SEGURA ---
+        // --- COMPRESIÓN ---
         async function compressImage(file, { quality = 0.6, maxWidth = 1200 } = {}) {
             return new Promise((resolve, reject) => {
-                if (!file) return reject(new Error("No file provided"));
+                if (!file) return reject(new Error("No file"));
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
-                reader.onload = (event) => {
+                reader.onload = (e) => {
                     const img = new Image();
-                    img.src = event.target.result;
+                    img.src = e.target.result;
                     img.onload = () => {
                         let w = img.width, h = img.height;
-                        if (w > maxWidth) {
-                            h = Math.round((h * maxWidth) / w);
-                            w = maxWidth;
-                        }
+                        if (w > maxWidth) { h = Math.round((h*maxWidth)/w); w=maxWidth; }
                         const canvas = document.createElement('canvas');
-                        canvas.width = w;
-                        canvas.height = h;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, w, h);
-                        
+                        canvas.width = w; canvas.height = h;
+                        canvas.getContext('2d').drawImage(img,0,0,w,h);
                         canvas.toBlob((blob) => {
-                            if (!blob) return reject(new Error("Error de compresión"));
-                            const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
-                                type: "image/jpeg",
-                                lastModified: Date.now(),
-                            });
-                            resolve(newFile);
+                            if(!blob) return reject(new Error("Error compresión"));
+                            resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "")+".jpg", {type:"image/jpeg"}));
                         }, 'image/jpeg', quality);
                     };
-                    img.onerror = () => reject(new Error("Imagen inválida"));
                 };
-                reader.onerror = () => reject(new Error("Error al leer archivo"));
             });
         }
-        // -------------------------
 
-        function opt(sel,value,label){
-          const o=document.createElement("option"); o.value=value; o.textContent=label; sel.append(o);
-        }
+        function opt(sel,v,l){ const o=document.createElement("option"); o.value=v; o.textContent=l; sel.append(o); }
         function money(n){return `$${Number(n||0).toLocaleString()}`;}
 
-        function setPreview(file){
-          preview.innerHTML="";
-          if(!file){ preview.innerHTML='<span class="file-preview__label">Sin archivo</span>'; return; }
-          const img=document.createElement("img");
-          img.src = URL.createObjectURL(file);
-          const label=document.createElement("span");
-          label.className="file-preview__label";
-          label.textContent=file.name;
-          preview.append(img,label);
-        }
-        fileInput.addEventListener("change", ()=> setPreview(fileInput.files?.[0] || null));
-
-        // Data State
         let allClients = [];
-        let validProjects = []; // Proyectos activos y con saldo
+        let validProjects = [];
 
-        // CARGA DE DATOS INTELIGENTE
         async function loadData(){
-            // 1. Cargar Proyectos
-            let qProjects;
-            if(manage){
-                qProjects = fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc"));
-            } else {
-                qProjects = fb.query(fb.collection(db,"projects"), fb.where("responsibleUid","==", user.uid), fb.orderBy("createdAt","desc"));
-            }
+            // 1. Cargar Proyectos (Todos para filtrar en memoria o query directo)
+            const qProjects = fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc"));
             const snapProj = await fb.getDocs(qProjects);
-            const rawProjects = snapProj.docs.map(d=>({id:d.id, ...d.data()}));
+            let rawProjects = snapProj.docs.map(d=>({id:d.id, ...d.data()}));
 
-            // 2. Filtrar: Activos Y con Saldo > 0
+            // Filtro para selectores: Si es empleado, solo donde es Resp o Aux
+            if(!manage){
+                rawProjects = rawProjects.filter(p => p.responsibleUid === user.uid || p.auxiliaryUid === user.uid);
+            }
+
+            // Filtrar solo Activos Y con Saldo > 0
             validProjects = rawProjects.filter(p => {
-                const isActive = (p.status || 'activo') === 'activo';
-                // Asumimos que si no existe 'spent', es 0
-                const remaining = (p.baseAmount || 0) - (p.spent || 0);
-                return isActive && remaining > 0;
+                const rem = (p.baseAmount||0) - (p.spent||0);
+                return (p.status||'activo')==='activo' && rem > 0;
             });
 
-            // 3. Cargar Clientes
+            // 2. Clientes
             const snapClients = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("name")));
             const rawClients = snapClients.docs.map(d=>({id:d.id, ...d.data()}));
-
-            // 4. Filtrar Clientes: Solo los que tienen proyectos válidos
             const validClientIds = new Set(validProjects.map(p => p.clientId));
             allClients = rawClients.filter(c => validClientIds.has(c.id));
 
@@ -213,160 +185,139 @@
         }
 
         function renderClientSelect(){
-            clientSel.innerHTML="";
-            opt(clientSel,"","Seleccione Cliente");
-            allClients.forEach(c => {
-                opt(clientSel, c.id, `${c.name} - ${c.city}`);
-            });
+            clientSel.innerHTML=""; opt(clientSel,"","Seleccione Cliente");
+            allClients.forEach(c => opt(clientSel, c.id, `${c.name} - ${c.city}`));
         }
 
-        function renderProjectSelect(){
-            projectSel.innerHTML="";
-            opt(projectSel,"","Seleccione Proyecto");
-            projectSel.disabled = true;
-            balanceInfo.style.display = "none";
-            
+        clientSel.addEventListener("change", () => {
+            projectSel.innerHTML=""; opt(projectSel,"","Seleccione Proyecto");
+            projectSel.disabled=true; balanceInfo.style.display="none";
             const cid = clientSel.value;
             if(!cid) return;
-
             const list = validProjects.filter(p => p.clientId === cid);
-            list.forEach(p => {
-                const rem = (p.baseAmount||0) - (p.spent||0);
-                opt(projectSel, p.id, `${p.code} (${money(rem)})`);
-            });
-            projectSel.disabled = false;
-        }
+            list.forEach(p => opt(projectSel, p.id, p.code));
+            projectSel.disabled=false;
+        });
 
-        // Mostrar saldo al seleccionar proyecto
         projectSel.addEventListener("change", () => {
             const pid = projectSel.value;
-            if(!pid) { balanceInfo.style.display="none"; return; }
-            
-            const p = validProjects.find(x => x.id === pid);
+            if(!pid){ balanceInfo.style.display="none"; return; }
+            const p = validProjects.find(x=>x.id===pid);
             if(p){
                 const rem = (p.baseAmount||0) - (p.spent||0);
                 balanceDisplay.textContent = money(rem);
-                balanceInfo.style.display = "block";
+                respDisplay.textContent = `Resp: ${p.responsibleName || 'N/A'}`;
+                balanceInfo.style.display="block";
             }
         });
 
-        clientSel.addEventListener("change", renderProjectSelect);
-
-        function renderCategories(){
-          catSel.innerHTML="";
-          opt(catSel,"","Seleccione");
-          DEFAULT_CATEGORIES.forEach(c=>opt(catSel,c,c));
-        }
-
         async function renderExpenses(){
           list.innerHTML="";
-          // Solo mostramos los últimos 15 para no saturar
-          const q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(15));
-          const snap = await fb.getDocs(q);
-          const expenses = snap.docs.map(d=>({id:d.id,...d.data()}));
-          
-          if(!expenses.length){ list.innerHTML=`<p class="sub">Sin registros.</p>`; return; }
+          let q;
 
-          expenses.forEach(e=>{
-            const item=document.createElement("div");
-            item.className="item";
-            item.innerHTML=`
-              <div class="item__head">
-                <span>${e.category}</span>
-                <span>${money(e.amount)}</span>
-              </div>
-              <div class="item__meta">${e.date} · ${e.projectName}</div>
-              <div class="item__meta">Soporte: ${e.receiptUrl ? `<a href="${e.receiptUrl}" target="_blank">Ver</a>` : "—"}</div>
-            `;
-            list.append(item);
-          });
+          // LOGICA DE CONSULTA SEGUN ROL
+          if(manage){
+             // Admin ve todo
+             q = fb.query(fb.collection(db,"expenses"), fb.orderBy("createdAt","desc"), fb.limit(20));
+          } else {
+             // Empleado ve SOLO SUS GASTOS (Más seguro y evita listas vacías)
+             q = fb.query(
+                fb.collection(db,"expenses"), 
+                fb.where("createdByUid", "==", user.uid), 
+                fb.orderBy("createdAt","desc"), 
+                fb.limit(20)
+             );
+          }
+
+          try {
+              const snap = await fb.getDocs(q);
+              const expenses = snap.docs.map(d=>({id:d.id,...d.data()}));
+              
+              if(!expenses.length){ list.innerHTML=`<p class="sub">Sin registros recientes.</p>`; return; }
+
+              expenses.forEach(e=>{
+                const item=document.createElement("div");
+                item.className="item";
+                item.innerHTML=`
+                  <div class="item__head"><span>${e.category}</span><span>${money(e.amount)}</span></div>
+                  <div class="item__meta">${e.date} · ${e.projectName}</div>
+                  <div class="item__meta">
+                    Por: ${e.createdByName} 
+                    ${e.receiptUrl ? ` · <a href="${e.receiptUrl}" target="_blank">Ver foto</a>` : ''}
+                  </div>
+                `;
+                list.append(item);
+              });
+          } catch(err) {
+              console.error("Error cargando gastos:", err);
+              list.innerHTML = `<p class="notice is-error">Error cargando lista. Verifica permisos.</p>`;
+          }
         }
 
-        // --- GUARDAR ---
         form.addEventListener("submit", async (e)=>{
           e.preventDefault();
           try{
             setNotice(msg,"Validando...", "loading");
-
             const cid = clientSel.value;
             const pid = projectSel.value;
             const amount = Number(document.querySelector("#e-amount").value);
             
             const project = validProjects.find(p => p.id === pid);
-            if(!project){ throw new Error("Proyecto inválido."); }
+            if(!project) throw new Error("Proyecto inválido.");
 
-            // 1. VALIDAR FONDOS (Doble chequeo)
-            const currentRemaining = (project.baseAmount||0) - (project.spent||0);
-            if(amount > currentRemaining){
-                throw new Error(`Fondos insuficientes. Disponible: ${money(currentRemaining)}`);
-            }
+            const currentRem = (project.baseAmount||0) - (project.spent||0);
+            if(amount > currentRem) throw new Error(`Fondos insuficientes. Disp: ${money(currentRem)}`);
 
-            // 2. COMPRIMIR
             const file = fileInput.files?.[0];
-            if(!file) throw new Error("Falta el soporte (imagen).");
+            if(!file) throw new Error("Falta foto.");
             
-            setNotice(msg,"Comprimiendo imagen...", "loading");
-            const compressedFile = await compressImage(file);
+            setNotice(msg,"Subiendo foto...", "loading");
+            const compressed = await compressImage(file);
+            const path = `receipts/${pid}/${Date.now()}_${compressed.name.replace(/[^a-zA-Z0-9]/g,"")}`;
+            const ref = fb.ref(storage, path);
+            await fb.uploadBytes(ref, compressed);
+            const url = await fb.getDownloadURL(ref);
 
-            // 3. SUBIR A STORAGE
-            setNotice(msg,"Subiendo archivo...", "loading");
-            const safeName = compressedFile.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-            const path = `receipts/${pid}/${Date.now()}_${safeName}`;
-            const storageRef = fb.ref(storage, path);
-            
-            await fb.uploadBytes(storageRef, compressedFile);
-            const url = await fb.getDownloadURL(storageRef);
-
-            // 4. GUARDAR GASTO Y ACTUALIZAR PROYECTO (Atomico idealmente, pero secuencial funciona aqui)
             setNotice(msg,"Registrando...", "loading");
-
-            const expensePayload = {
+            const payload = {
               clientId: cid,
               clientName: allClients.find(c=>c.id===cid)?.name || "",
               projectId: pid,
-              projectName: `${project.code} · ${project.name}`,
+              projectName: `${project.code} · ${project.name||''}`,
               date: document.querySelector("#e-date").value,
               amount: amount,
               category: catSel.value,
               description: document.querySelector("#e-desc").value.trim(),
               receiptUrl: url,
-              receiptName: compressedFile.name,
+              receiptName: compressed.name,
               createdByUid: user.uid,
-              createdByName: profile.name || profile.email || "",
+              createdByName: profile.name || profile.email,
               createdAt: fb.serverTimestamp(),
             };
 
-            // A) Crear documento de gasto
-            await fb.addDoc(fb.collection(db,"expenses"), expensePayload);
+            await fb.addDoc(fb.collection(db,"expenses"), payload);
 
-            // B) DESCONTAR DE LA BASE (Actualizar proyecto)
-            // Usamos 'increment' de Firestore para sumar al campo 'spent' de forma segura
-            await fb.updateDoc(fb.doc(db, "projects", pid), {
-                spent: increment(amount)
-            });
+            // Actualizar saldo proyecto
+            const updates = { spent: increment(amount) };
+            if(((project.spent||0) + amount) >= (project.baseAmount||0)){
+                updates.status = "inactivo";
+            }
+            await fb.updateDoc(fb.doc(db,"projects", pid), updates);
 
             form.reset();
-            setPreview(null);
             balanceInfo.style.display="none";
+            setNotice(msg, updates.status==="inactivo" ? "Guardado. Proyecto CERRADO (Saldo 0)." : "Gasto guardado.", "success");
             
-            setNotice(msg, "Gasto guardado y descontado.", "success");
-            
-            // Recargar datos para actualizar saldos
             await loadData();
             await renderExpenses();
 
-          }catch(err){
-            console.error("Error:", err);
-            setNotice(msg, err.message || "Error desconocido", "error");
-          }
+          }catch(err){ console.error(err); setNotice(msg, err.message, "error"); }
         });
 
-        // Init
-        renderCategories();
+        catSel.innerHTML=""; DEFAULT_CATEGORIES.forEach(c=>opt(catSel,c,c));
         await loadData();
         await renderExpenses();
       </script>
-
     </main>
   </div>
 </body>

@@ -27,7 +27,7 @@
         <a href="./clients.html" class="" data-role="manageProjects">Clientes</a>
         <a href="./projects.html" class="is-active" data-role="manageProjects">Proyectos</a>
         <a href="./expenses.html" class="">Gastos</a>
-        <a href="./users.html" class="" data-role="adminOnly">Usuarios</a>
+        <a href="./reports.html" class="">Reportes</a> <a href="./users.html" class="" data-role="adminOnly">Usuarios</a>
       </nav>
       <div class="sidebar__meta">
         <div><b>Hosting:</b> Firebase</div>
@@ -39,7 +39,7 @@
       
       <div>
         <h1 class="h1">Proyectos</h1>
-        <p class="sub">Crea proyectos con código automático. El código se basa en Cliente-Ciudad.</p>
+        <p class="sub">Gestión de proyectos. Haz clic en un proyecto de la lista para ver sus detalles y gastos.</p>
       </div>
 
       <div class="grid">
@@ -47,32 +47,31 @@
           <h3>Crear proyecto</h3>
           <form class="form" id="p-form">
             <label>Cliente
-              <select id="p-client" required>
-                <option value="">Cargando...</option>
-              </select>
+              <select id="p-client" required><option value="">Cargando...</option></select>
             </label>
-
             <div class="row">
               <label>Ciudad
-                <select id="p-city" required disabled>
-                  <option value="">Seleccione Cliente primero</option>
-                </select>
+                <select id="p-city" required disabled><option value="">Seleccione Cliente</option></select>
               </label>
-              
-              <label>Código (Automático)
-                <input id="p-code" readonly placeholder="Ej: DAV-CAR-0001" style="background:#f1f5f9; cursor:not-allowed; font-weight:bold;"/>
+              <label>Código (Auto)
+                <input id="p-code" readonly placeholder="---" style="background:#f1f5f9; font-weight:bold;"/>
+              </label>
+            </div>
+            
+            <div class="row">
+              <label>Responsable (Líder/Emp)
+                <select id="p-resp" required></select>
+              </label>
+              <label>Auxiliar (Opcional)
+                <select id="p-aux"><option value="">Ninguno</option></select>
               </label>
             </div>
 
-            <label>Responsable
-              <select id="p-resp" required></select>
-            </label>
-            
             <label>Base inicial
               <input id="p-base" type="number" min="1" required/>
             </label>
-            <label>Notas (opcional)
-              <textarea id="p-notes" rows="3"></textarea>
+            <label>Notas
+              <textarea id="p-notes" rows="2"></textarea>
             </label>
             <button class="button" type="submit">Guardar Proyecto</button>
             <p class="notice" id="p-msg"></p>
@@ -81,29 +80,42 @@
 
         <div class="card">
           <h3>Listado</h3>
-          <p>Proyectos activos e inactivos.</p>
+          <p>Rojo = Inactivo. Haz clic para ver detalles.</p>
           <div class="list" id="p-list"></div>
+        </div>
+      </div>
+
+      <div class="modal-overlay" id="modal-details">
+        <div class="modal">
+          <div class="modal__header">
+            <span class="modal__title" id="m-title">Detalles</span>
+            <button class="modal__close" id="m-close">×</button>
+          </div>
+          <div class="modal__body">
+            <div style="display:flex; justify-content:space-between; margin-bottom:1rem; padding:10px; background:#f1f5f9; border-radius:6px;">
+               <div><b>Base:</b> <span id="m-base">$0</span></div>
+               <div><b>Gastado:</b> <span id="m-spent" style="color:#ef4444;">$0</span></div>
+               <div><b>Saldo:</b> <span id="m-balance" style="font-weight:bold; color:#10b981;">$0</span></div>
+            </div>
+            <h4>Historial de Gastos</h4>
+            <div class="list mini-list" id="m-list"></div>
+          </div>
         </div>
       </div>
 
       <script type="module">
         import { db, fb } from "./js/firebase.js";
-        // Importamos 'logout' aquí directamente
         import { requireAuth, fillUserBadge, setActiveNav, setNotice, qsa, logout } from "./js/common.js";
 
-        // 1. Autenticación y UI Básica
         const { profile, role } = await requireAuth({ allowedRoles:["admin","lider"] });
         fillUserBadge(profile);
         setActiveNav();
-        
-        // 2. Configurar Botón Salir
         document.querySelector("#logout-btn")?.addEventListener("click", logout);
 
-        // 3. Manejo de Roles
         qsa('[data-role="manageProjects"]').forEach(a => a.classList.remove("hidden"));
         qsa('[data-role="adminOnly"]').forEach(a => a.classList.toggle("hidden", role !== "admin"));
 
-        // 4. Lógica de Proyectos
+        // DOM
         const form = document.querySelector("#p-form");
         const msg = document.querySelector("#p-msg");
         const list = document.querySelector("#p-list");
@@ -111,6 +123,16 @@
         const citySel = document.querySelector("#p-city");
         const codeInput = document.querySelector("#p-code");
         const respSel = document.querySelector("#p-resp");
+        const auxSel = document.querySelector("#p-aux");
+        
+        // Modal DOM
+        const modal = document.querySelector("#modal-details");
+        const mTitle = document.querySelector("#m-title");
+        const mBase = document.querySelector("#m-base");
+        const mSpent = document.querySelector("#m-spent");
+        const mBalance = document.querySelector("#m-balance");
+        const mList = document.querySelector("#m-list");
+        document.querySelector("#m-close").onclick = () => modal.classList.remove("is-visible");
 
         let allClients = []; 
         let allProjects = []; 
@@ -118,140 +140,196 @@
         function opt(sel, value, label){
           const o=document.createElement("option"); o.value=value; o.textContent=label; sel.append(o);
         }
+        function money(n){return `$${Number(n||0).toLocaleString()}`;}
 
-        // A. Cargar Clientes
+        // A. Cargas Iniciales
         async function loadClients(){
-          clientSel.innerHTML="";
-          opt(clientSel,"","Seleccione Cliente");
-          
+          clientSel.innerHTML=""; opt(clientSel,"","Seleccione Cliente");
           const snap = await fb.getDocs(fb.query(fb.collection(db,"clients"), fb.orderBy("name")));
           allClients = snap.docs.map(d => ({id:d.id, ...d.data()}));
-          
           const uniqueNames = [...new Set(allClients.map(c => c.name))];
-          uniqueNames.forEach(name => {
-            opt(clientSel, name, name); 
-          });
+          uniqueNames.forEach(name => opt(clientSel, name, name));
         }
 
-        // B. Cargar Responsables
-        async function loadResponsibles(){
-          respSel.innerHTML="";
-          opt(respSel,"","Seleccione");
+        async function loadUsers(){
+          respSel.innerHTML=""; opt(respSel,"","Seleccione Resp.");
+          auxSel.innerHTML=""; opt(auxSel,"","Ninguno");
+          
           const snap = await fb.getDocs(fb.collection(db,"users"));
           const users = snap.docs.map(d=>({id:d.id, ...d.data()}));
-          
+          // Filtro: Solo empleados o líderes
           const allowed = users.filter(u => u.role === "empleado" || u.role === "lider");
           allowed.sort((a,b) => (a.name||"").localeCompare(b.name||""));
           
           allowed.forEach(u => {
-            opt(respSel, u.id, `${u.name} (${u.role.toUpperCase()})`);
+            const label = `${u.name} (${u.role.toUpperCase()})`;
+            opt(respSel, u.id, label);
+            opt(auxSel, u.id, label);
           });
         }
 
-        // C. Cargar Proyectos
-        async function loadProjectsData(){
+        async function loadProjects(){
           const snap = await fb.getDocs(fb.query(fb.collection(db,"projects"), fb.orderBy("createdAt","desc")));
           allProjects = snap.docs.map(d=>({id:d.id, ...d.data()}));
-          renderProjectsList();
+          renderList();
         }
 
-        function renderProjectsList(){
+        // B. Renderizado
+        function renderList(){
           list.innerHTML="";
-          if(!allProjects.length){
-            list.innerHTML = `<p class="sub">Aún no hay proyectos.</p>`;
-            return;
-          }
+          if(!allProjects.length){ list.innerHTML = `<p class="sub">Sin proyectos.</p>`; return; }
+          
           allProjects.forEach(p=>{
+            const isInactive = (p.status === "inactivo");
             const item=document.createElement("div");
-            item.className="item";
+            // Clase is-inactive pone el fondo rojo pálido
+            item.className = `item ${isInactive ? 'is-inactive' : ''}`;
+            
+            // Selector de estado: Admin/Lider pueden cambiarlo. Empleado solo ve texto.
+            let statusHTML = "";
+            if(role === "admin" || role === "lider"){
+               statusHTML = `
+                <select class="status-change" data-id="${p.id}" onclick="event.stopPropagation()">
+                  <option value="activo" ${!isInactive?"selected":""}>Activo</option>
+                  <option value="inactivo" ${isInactive?"selected":""}>Inactivo</option>
+                </select>`;
+            } else {
+               statusHTML = `<span class="badge ${isInactive?'is-error':''}">${p.status||'activo'}</span>`;
+            }
+
             item.innerHTML=`
               <div class="item__head">
                 <span>${p.code}</span>
-                <span>$${Number(p.baseAmount||0).toLocaleString()}</span>
+                <span>${money(p.baseAmount)}</span>
               </div>
-              <div class="item__meta">${p.clientName} - ${p.city}</div>
-              <div class="item__meta">Resp: ${p.responsibleName||""}</div>
               <div class="item__meta">
-                Estado:
-                <select data-id="${p.id}" class="status">
-                  <option value="activo" ${ (p.status||"activo")==="activo" ? "selected":"" }>Activo</option>
-                  <option value="inactivo" ${ (p.status||"activo")==="inactivo" ? "selected":"" }>Inactivo</option>
-                </select>
+                 ${p.clientName} - ${p.city}<br>
+                 Resp: ${p.responsibleName} ${p.auxName ? `| Aux: ${p.auxName}` : ''}
+              </div>
+              <div class="item__meta" style="margin-top:5px; display:flex; justify-content:space-between; align-items:center;">
+                Estado: ${statusHTML}
+                <button class="button button--ghost" style="padding:4px 8px; font-size:12px;">Ver detalles</button>
               </div>
             `;
+            
+            // Click en todo el item abre el modal
+            item.addEventListener("click", () => openModal(p));
             list.append(item);
+          });
+
+          // Evento para cambio de estado manual
+          document.querySelectorAll(".status-change").forEach(sel => {
+            sel.addEventListener("change", async (e) => {
+               const newStatus = e.target.value;
+               const pid = e.target.dataset.id;
+               await fb.updateDoc(fb.doc(db,"projects", pid), { status: newStatus });
+               // Actualizar localmente para el color
+               const p = allProjects.find(x=>x.id===pid);
+               if(p) p.status = newStatus;
+               renderList(); 
+            });
           });
         }
 
-        // INTERACCIÓN: Cliente -> Ciudad
+        // C. Lógica Modal
+        async function openModal(project){
+           mTitle.textContent = `${project.code} - ${project.clientName}`;
+           const spent = project.spent || 0;
+           const base = project.baseAmount || 0;
+           const balance = base - spent;
+           
+           mBase.textContent = money(base);
+           mSpent.textContent = money(spent);
+           mBalance.textContent = money(balance);
+           
+           mList.innerHTML = '<p class="sub">Cargando gastos...</p>';
+           modal.classList.add("is-visible");
+
+           // Cargar gastos de este proyecto
+           const q = fb.query(fb.collection(db,"expenses"), fb.where("projectId","==",project.id), fb.orderBy("createdAt","desc"));
+           const snap = await fb.getDocs(q);
+           
+           mList.innerHTML = "";
+           if(snap.empty){ mList.innerHTML = '<p class="sub">Sin gastos registrados.</p>'; return; }
+
+           snap.forEach(doc => {
+              const e = doc.data();
+              const div = document.createElement("div");
+              div.className = "item";
+              div.innerHTML = `
+                <div style="display:flex; justify-content:space-between;">
+                   <span>${e.category}</span>
+                   <b>${money(e.amount)}</b>
+                </div>
+                <div style="font-size:11px; color:#64748b;">
+                   ${e.date} · Por: ${e.createdByName}
+                </div>
+              `;
+              mList.append(div);
+           });
+        }
+
+        // D. Lógica Formularios (Clientes y Ciudades)
         clientSel.addEventListener("change", ()=>{
           const selectedName = clientSel.value;
-          citySel.innerHTML = "";
-          opt(citySel, "", "Seleccione Ciudad");
+          citySel.innerHTML = ""; opt(citySel, "", "Seleccione Ciudad");
           codeInput.value = ""; 
 
-          if(!selectedName){
-            citySel.disabled = true;
-            return;
-          }
+          if(!selectedName){ citySel.disabled = true; return; }
 
           const matches = allClients.filter(c => c.name === selectedName);
           matches.forEach(m => opt(citySel, m.city, m.city));
           citySel.disabled = false;
         });
 
-        // INTERACCIÓN: Ciudad -> Código
         citySel.addEventListener("change", generateCode);
 
         function generateCode(){
-          const clientName = clientSel.value;
-          const cityName = citySel.value;
+          const cName = clientSel.value;
+          const cCity = citySel.value;
+          if(!cName || !cCity){ codeInput.value=""; return; }
 
-          if(!clientName || !cityName){
-            codeInput.value = "";
-            return;
-          }
-
-          const abbrClient = clientName.substring(0,3).toUpperCase();
-          const abbrCity = cityName.substring(0,3).toUpperCase();
-          const prefix = `${abbrClient}-${abbrCity}`; 
+          const abbrC = cName.substring(0,3).toUpperCase();
+          const abbrCity = cCity.substring(0,3).toUpperCase();
+          const prefix = `${abbrC}-${abbrCity}`;
 
           const existing = allProjects.filter(p => p.code && p.code.startsWith(prefix));
-          let maxNum = 0;
+          let max = 0;
           existing.forEach(p => {
-            const parts = p.code.split("-");
-            const numPart = parseInt(parts[parts.length-1]); 
-            if(!isNaN(numPart) && numPart > maxNum) maxNum = numPart;
+             const parts = p.code.split("-");
+             const n = parseInt(parts[parts.length-1]);
+             if(!isNaN(n) && n > max) max = n;
           });
-
-          const nextNum = maxNum + 1;
-          const consecutive = String(nextNum).padStart(4, "0"); 
-          codeInput.value = `${prefix}-${consecutive}`;
+          codeInput.value = `${prefix}-${String(max+1).padStart(4,"0")}`;
         }
 
-        // GUARDAR
         form.addEventListener("submit", async (e)=>{
           e.preventDefault();
           try{
             setNotice(msg,"Guardando...","loading");
+            const cName = clientSel.value;
+            const cCity = citySel.value;
+            const clientDoc = allClients.find(c => c.name === cName && c.city === cCity);
             
-            const clientName = clientSel.value;
-            const cityName = citySel.value;
-            const clientDoc = allClients.find(c => c.name === clientName && c.city === cityName);
-            const clientId = clientDoc ? clientDoc.id : "unknown";
-
             const respId = respSel.value;
-            const respText = respSel.options[respSel.selectedIndex].text; 
-            const respName = respText.split(" (")[0]; 
+            const respText = respSel.options[respSel.selectedIndex].text.split(" (")[0];
+
+            // AUXILIAR
+            const auxId = auxSel.value;
+            let auxName = "";
+            if(auxId) auxName = auxSel.options[auxSel.selectedIndex].text.split(" (")[0];
 
             const payload = {
               code: codeInput.value,
-              clientId, 
-              clientName,
-              city: cityName,
+              clientId: clientDoc ? clientDoc.id : "unknown",
+              clientName: cName,
+              city: cCity,
               responsibleUid: respId,
-              responsibleName: respName,
+              responsibleName: respText,
+              auxiliaryUid: auxId || null, // Nuevo campo
+              auxName: auxName || null,    // Nuevo campo
               baseAmount: Number(document.querySelector("#p-base").value),
+              spent: 0, // Inicializamos gastado en 0
               status: "activo",
               notes: document.querySelector("#p-notes").value.trim(),
               createdAt: fb.serverTimestamp(),
@@ -259,32 +337,17 @@
 
             await fb.addDoc(fb.collection(db,"projects"), payload);
             form.reset();
-            citySel.disabled = true;
-            setNotice(msg,`Proyecto creado: ${payload.code}`,"success");
-            await loadProjectsData();
+            citySel.disabled=true;
+            setNotice(msg,`Proyecto ${payload.code} creado.`,"success");
+            await loadProjects();
 
-          }catch(err){
-            console.error(err);
-            setNotice(msg,"No se pudo guardar.","error");
-          }
+          }catch(err){ console.error(err); setNotice(msg,"Error guardando.","error"); }
         });
 
-        // Actualizar estado
-        list.addEventListener("change", async (e)=>{
-          const sel=e.target;
-          if(sel.classList.contains("status")){
-            try{
-              await fb.updateDoc(fb.doc(db,"projects", sel.dataset.id), { status: sel.value });
-            }catch(err){ console.error(err); }
-          }
-        });
-
-        // Init
         await loadClients();
-        await loadResponsibles();
-        await loadProjectsData();
+        await loadUsers();
+        await loadProjects();
       </script>
-
     </main>
   </div>
 </body>
