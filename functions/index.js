@@ -39,44 +39,39 @@ exports.createUserAccount = onCall(async (request) => {
   }
 
   const usernameKey = String(username).trim().toLowerCase();
+  const emailKey = String(email).trim().toLowerCase();
   const db = admin.firestore();
 
-  // 4. Verificar username único
-  const userRef = db.collection("usernames").doc(usernameKey);
-  const userSnap = await userRef.get();
-  if (userSnap.exists) {
+  // 4. Verificar username único en users
+  const existing = await db
+    .collection("users")
+    .where("username", "==", usernameKey)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) {
     throw new HttpsError("already-exists", "El usuario ya existe.");
   }
 
   // 5. Crear en Authentication
-  let userRecord;
-  try {
-    userRecord = await admin.auth().createUser({
-      email: email,
-      password: password,
-      displayName: name,
-    });
-  } catch (error) {
-    if (error.code === 'auth/email-already-exists') {
-      throw new HttpsError("already-exists", "El correo ya está registrado.");
-    }
-    throw new HttpsError("internal", "Error creando usuario en Auth.");
-  }
+  userRecord = await admin.auth().createUser({
+    email: emailKey,
+    password: password,
+    displayName: name,
+  });
 
-  // 6. Asignar Rol y Guardar en Firestore
+  // 6. Guardar perfil en Firestore
   await admin.auth().setCustomUserClaims(userRecord.uid, { role });
 
   await db.collection("users").doc(userRecord.uid).set({
-    name: name,
-    email: email,
+    name,
+    email: emailKey,
     username: usernameKey,
-    role: role,
+    role,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  await userRef.set({ email: email, uid: userRecord.uid });
-
-  return { success: true, email: email };
+  return { success: true, email: emailKey };
 });
 
 /**
